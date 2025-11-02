@@ -8,6 +8,11 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get("state");
   const error = searchParams.get("error");
   
+  // Check if X OAuth is configured
+  if (!env.X_CLIENT_ID || !env.X_CLIENT_SECRET || !env.X_CALLBACK_URL) {
+    return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("X OAuth not configured")}`, request.url));
+  }
+  
   if (error) {
     return NextResponse.redirect(new URL(`/?error=${encodeURIComponent(error)}`, request.url));
   }

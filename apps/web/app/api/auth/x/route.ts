@@ -8,6 +8,11 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   
+  // Check if X OAuth is configured
+  if (!env.X_CLIENT_ID || !env.X_CLIENT_SECRET || !env.X_CALLBACK_URL) {
+    return NextResponse.json({ error: "X OAuth not configured" }, { status: 500 });
+  }
+  
   if (!code) {
     return NextResponse.json({ error: "Missing code" }, { status: 400 });
   }
