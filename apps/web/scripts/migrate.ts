@@ -2,11 +2,17 @@ import postgres from "postgres";
 import { env } from "../env.mjs";
 
 const connectionString = env.DATABASE_URL;
+if (!connectionString) {
+  console.error("❌ DATABASE_URL not configured");
+  process.exit(1);
+}
 const sql = postgres(connectionString);
 
 async function runMigrations() {
   console.log("Running database migrations...");
-  console.log("Database:", connectionString.replace(/:[^:@]+@/, ":****@"));
+  if (connectionString) {
+    console.log("Database:", connectionString.replace(/:[^:@]+@/, ":****@"));
+  }
 
   try {
     // Users table

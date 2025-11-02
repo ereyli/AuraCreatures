@@ -2,12 +2,16 @@ import { ethers } from "ethers";
 import type { MintAuth } from "@/lib/types";
 import { env } from "../env.mjs";
 
-const EIP712_DOMAIN = {
-  name: "X Animal NFT",
-  version: "1",
-  chainId: parseInt(env.NEXT_PUBLIC_CHAIN_ID),
-  verifyingContract: env.CONTRACT_ADDRESS,
-};
+function getEIP712DomainValue() {
+  return {
+    name: "X Animal NFT",
+    version: "1",
+    chainId: parseInt(env.NEXT_PUBLIC_CHAIN_ID),
+    verifyingContract: env.CONTRACT_ADDRESS,
+  };
+}
+
+const EIP712_DOMAIN = getEIP712DomainValue();
 
 const EIP712_TYPES = {
   MintAuth: [
