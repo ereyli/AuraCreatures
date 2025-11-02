@@ -1,5 +1,5 @@
 import { env } from "../env.mjs";
-import type { Traits } from "@xanimal-nft/shared";
+import type { Traits } from "@/lib/types";
 import { buildPrompt } from "./traits";
 import { generateImageViaDaydreamsAPI } from "./daydreams-api";
 

@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { XUser } from "@xanimal-nft/shared";
+import type { XUser } from "@/lib/types";
 
 const X_API_BASE = "https://api.twitter.com/2";
 

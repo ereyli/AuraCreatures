@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import type { MintAuth } from "@xanimal-nft/shared";
+import type { MintAuth } from "@/lib/types";
 import { env } from "../env.mjs";
 
 const EIP712_DOMAIN = {

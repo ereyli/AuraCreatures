@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import type { Traits } from "@xanimal-nft/shared";
+import type { Traits } from "@/lib/types";
 
 const colors = ["Green", "Blue", "Red", "Yellow", "Purple", "Orange", "Pink", "Cyan"];
 const eyes = ["Round", "Narrow", "Wide", "Sleepy", "Angry", "Happy", "Surprised", "Winking"];

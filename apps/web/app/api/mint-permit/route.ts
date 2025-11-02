@@ -6,7 +6,7 @@ import { db, tokens } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
 import { env } from "@/env.mjs";
 import { ethers } from "ethers";
-import type { MintPermitRequest, MintAuth } from "@xanimal-nft/shared";
+import type { MintPermitRequest, MintAuth } from "@/lib/types";
 
 // Contract ABI for querying nonce
 const CONTRACT_ABI = [

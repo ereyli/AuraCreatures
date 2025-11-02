@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { ethers } from "ethers";
-import type { GenerateResponse, MintPermitResponse } from "@xanimal-nft/shared";
+import type { GenerateResponse, MintPermitResponse } from "@/lib/types";
 
 export default function HomePage() {
   const searchParams = useSearchParams();

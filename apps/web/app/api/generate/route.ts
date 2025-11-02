@@ -7,7 +7,7 @@ import { acquireLock, releaseLock } from "@/lib/kv";
 import { db, tokens } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { env } from "@/env.mjs";
-import type { GenerateRequest, GenerateResponse } from "@xanimal-nft/shared";
+import type { GenerateRequest, GenerateResponse } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
