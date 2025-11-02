@@ -91,7 +91,7 @@ const mockDbFunctions = {
     from: (table: any) => {
       // Extract table name from Drizzle table object
       // Drizzle uses Symbol(drizzle:Name) for table name
-      let tableName: string;
+      let tableName: string = "tokens"; // Default fallback
       
       if (typeof table === "string") {
         tableName = table;
@@ -109,10 +109,7 @@ const mockDbFunctions = {
         } else {
           // Last resort: try to find any name property
           console.warn("Could not determine table name from:", Object.keys(table));
-          tableName = "tokens"; // Default fallback
         }
-      } else {
-        tableName = "tokens"; // Default fallback
       }
       
       const data = mockDb[tableName as keyof typeof mockDb] || [];
@@ -139,7 +136,7 @@ const mockDbFunctions = {
   insert: (table: any) => ({
     values: async (values: any) => {
       // Extract table name from Drizzle table object
-      let tableName: string;
+      let tableName: string = "tokens"; // Default fallback
       
       if (typeof table === "string") {
         tableName = table;
@@ -171,11 +168,8 @@ const mockDbFunctions = {
           } else {
             // Last resort
             console.warn("Could not determine table name from:", Object.keys(table));
-            tableName = "tokens"; // Default fallback
           }
         }
-      } else {
-        tableName = "tokens"; // Default fallback
       }
       
       const id = (mockDb[tableName as keyof typeof mockDb]?.length || 0) + 1;
@@ -193,7 +187,7 @@ const mockDbFunctions = {
     set: (values: any) => ({
       where: async (condition: any) => {
         // Extract table name from Drizzle table object
-        let tableName: string;
+        let tableName: string = "tokens"; // Default fallback
         
         if (typeof table === "string") {
           tableName = table;
@@ -209,10 +203,7 @@ const mockDbFunctions = {
             tableName = table.tableName;
           } else {
             console.warn("Could not determine table name from:", Object.keys(table));
-            tableName = "tokens"; // Default fallback
           }
-        } else {
-          tableName = "tokens"; // Default fallback
         }
         
         const data = mockDb[tableName as keyof typeof mockDb] || [];
