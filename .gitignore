@@ -35,3 +35,6 @@ packages/contracts/lib/
 # Vercel
 .vercel
 
+# TypeScript
+*.tsbuildinfo
+
