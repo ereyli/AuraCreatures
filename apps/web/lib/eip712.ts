@@ -29,6 +29,10 @@ export function getEIP712Types() {
 }
 
 export async function signMintAuth(auth: MintAuth): Promise<string> {
+  if (!env.SERVER_SIGNER_PRIVATE_KEY) {
+    throw new Error("SERVER_SIGNER_PRIVATE_KEY not configured");
+  }
+  
   const signer = new ethers.Wallet(env.SERVER_SIGNER_PRIVATE_KEY);
   
   const signature = await signer.signTypedData(
