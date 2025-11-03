@@ -66,7 +66,7 @@ export async function exchangeCodeForToken(
         grant_type: "authorization_code",
         client_id: clientId,
         redirect_uri: redirectUri,
-        code_verifier: "", // PKCE if used
+        // PKCE not used - X OAuth 2.0 supports both methods
       }),
       {
         headers: {

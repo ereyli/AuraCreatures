@@ -64,13 +64,19 @@ function HomePageContent() {
   const connectX = async () => {
     try {
       setLoading(true);
-      const clientId = process.env.NEXT_PUBLIC_X_CLIENT_ID;
-      const redirectUri = process.env.NEXT_PUBLIC_X_CALLBACK_URL || window.location.origin + "/api/auth/x/callback";
-      const scope = "tweet.read users.read";
-      const state = Math.random().toString(36).substring(7);
+      setError(null);
       
-      const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}&code_challenge=${state}&code_challenge_method=plain`;
+      // Get OAuth URL from backend (more secure - client ID not exposed)
+      const response = await fetch("/api/auth/x/authorize");
       
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to initiate X OAuth" }));
+        throw new Error(errorData.error || "X OAuth not configured");
+      }
+      
+      const { authUrl } = await response.json();
+      
+      // Redirect to X OAuth
       window.location.href = authUrl;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect X");
