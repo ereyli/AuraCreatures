@@ -99,19 +99,31 @@ export async function exchangeCodeForToken(
     console.log("✅ Token exchange successful");
     return response.data;
   } catch (error: any) {
-    console.error("❌ X OAuth token exchange error:", {
+    const errorDetails = {
       status: error.response?.status,
       statusText: error.response?.statusText,
       data: error.response?.data,
       message: error.message,
+      clientIdLength: cleanClientId?.length || 0,
+      clientSecretLength: cleanClientSecret?.length || 0,
+      redirectUri: cleanRedirectUri,
+      hasCodeVerifier: !!codeVerifier,
       note: "Check if Client ID, Secret, and Callback URI match X Developer Portal",
-    });
+    };
+    
+    console.error("❌ X OAuth token exchange error:", JSON.stringify(errorDetails, null, 2));
     
     // Provide more detailed error information
     if (error.response?.status === 400) {
-      console.error("💡 Common causes: Invalid code, expired code, or redirect_uri mismatch");
+      console.error("💡 Common causes: Invalid code, expired code, redirect_uri mismatch, or missing code_verifier (PKCE)");
+      if (error.response?.data) {
+        console.error("💡 X API Error Details:", JSON.stringify(error.response.data, null, 2));
+      }
     } else if (error.response?.status === 401) {
       console.error("💡 Common causes: Invalid Client ID or Secret");
+      console.error("💡 Check: X Developer Portal → Settings → Keys and Tokens → OAuth 2.0 credentials");
+    } else if (error.response?.status === 403) {
+      console.error("💡 Common causes: Client ID/Secret mismatch or app not approved");
     }
     
     return null;
