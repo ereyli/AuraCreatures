@@ -50,35 +50,53 @@ export async function GET(request: NextRequest) {
         
         if (cookieValue) {
           // Parse encrypted verifier from cookie
-          const [cookieState, encryptedVerifier] = cookieValue.split(":");
-          
-          if (cookieState === state && encryptedVerifier) {
-            try {
-              // Decrypt verifier
-              const crypto = require("crypto");
-              const secretKey = env.X_CLIENT_SECRET?.substring(0, 32) || "fallback_secret_key_12345678";
-              const [ivHex, encrypted] = encryptedVerifier.split(":");
-              
-              if (ivHex && encrypted) {
-                const iv = Buffer.from(ivHex, "hex");
-                const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(secretKey.padEnd(32, "0")), iv);
-                let decrypted = decipher.update(encrypted, "hex", "utf8");
-                decrypted += decipher.final("utf8");
-                codeVerifier = decrypted;
+          // Cookie format: "state:ivHex:encrypted"
+          // We need to split carefully since encrypted may contain colons if base64
+          const parts = cookieValue.split(":");
+          if (parts.length >= 3) {
+            const cookieState = parts[0];
+            const ivHex = parts[1];
+            const encrypted = parts.slice(2).join(":"); // Rejoin in case encrypted has colons
+            
+            if (cookieState === state && ivHex && encrypted) {
+              try {
+                // Decrypt verifier
+                const crypto = require("crypto");
+                const secretKey = env.X_CLIENT_SECRET?.substring(0, 32) || "fallback_secret_key_12345678";
                 
-                console.log("✅ PKCE verifier retrieved from encrypted cookie (fallback mode)");
-                // Cookie will be cleaned up in the final redirect response
-              } else {
-                console.error("❌ Invalid encrypted verifier format in cookie");
+                if (ivHex && encrypted) {
+                  const iv = Buffer.from(ivHex, "hex");
+                  const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(secretKey.padEnd(32, "0")), iv);
+                  let decrypted = decipher.update(encrypted, "hex", "utf8");
+                  decrypted += decipher.final("utf8");
+                  codeVerifier = decrypted;
+                  
+                  console.log("✅ PKCE verifier retrieved from encrypted cookie (fallback mode)");
+                  // Cookie will be cleaned up in the final redirect response
+                } else {
+                  console.error("❌ Invalid encrypted verifier format in cookie - missing ivHex or encrypted");
+                }
+              } catch (decryptError) {
+                console.error("❌ Failed to decrypt PKCE verifier from cookie:", {
+                  error: decryptError instanceof Error ? decryptError.message : "Unknown error",
+                  ivHexLength: ivHex?.length || 0,
+                  encryptedLength: encrypted?.length || 0,
+                });
               }
-            } catch (decryptError) {
-              console.error("❌ Failed to decrypt PKCE verifier from cookie:", decryptError);
+            } else {
+              console.warn("⚠️ Cookie state mismatch or missing parts:", {
+                cookieState: parts[0],
+                expectedState: state,
+                partsCount: parts.length,
+                hasIvHex: !!parts[1],
+                hasEncrypted: parts.length >= 3,
+              });
             }
           } else {
-            console.warn("⚠️ Cookie state mismatch:", {
-              cookieState,
-              expectedState: state,
-              hasEncryptedVerifier: !!encryptedVerifier,
+            console.error("❌ Invalid cookie format - expected format: state:ivHex:encrypted", {
+              cookieLength: cookieValue.length,
+              partsCount: parts.length,
+              cookiePreview: cookieValue.substring(0, 50) + "...",
             });
           }
         } else {
