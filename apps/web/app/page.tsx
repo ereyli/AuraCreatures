@@ -19,25 +19,21 @@ function HomePageContent() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [currentMessage, setCurrentMessage] = useState("");
   const [isFarcaster, setIsFarcaster] = useState(false);
+  const [messageIndex, setMessageIndex] = useState(0);
 
   // Initialize Farcaster SDK if available
   useEffect(() => {
     const initFarcaster = async () => {
       try {
-        // Try to load Farcaster SDK dynamically
         const farcasterModule = await import("@farcaster/miniapp-sdk");
         sdk = farcasterModule.sdk;
-        
-        // Check if we're in a Farcaster client
         const context = await sdk.context();
         if (context.client) {
           setIsFarcaster(true);
-          // Call ready() to hide splash screen
           await sdk.actions.ready();
           console.log("✅ Farcaster Mini App initialized");
         }
       } catch (e) {
-        // SDK not available (running on web, not in Farcaster)
         console.log("Farcaster SDK not available, running in web mode");
       }
     };
@@ -47,7 +43,6 @@ function HomePageContent() {
   // Check for existing wallet connection on mount
   useEffect(() => {
     const checkWallet = async () => {
-      // Try Farcaster wallet first (if SDK is available)
       try {
         const farcasterModule = await import("@farcaster/miniapp-sdk");
         sdk = farcasterModule.sdk;
@@ -58,10 +53,9 @@ function HomePageContent() {
           return;
         }
       } catch (e) {
-        // Farcaster not available, continue to standard wallet check
+        // Farcaster not available, continue
       }
 
-      // Check for standard web3 wallet
       if (typeof window.ethereum !== "undefined") {
         try {
           const provider = new ethers.BrowserProvider(window.ethereum);
@@ -79,12 +73,26 @@ function HomePageContent() {
     checkWallet();
   }, []);
 
+  // Animate story messages during generation
+  useEffect(() => {
+    if (step === "generating" && generationProgress < 100) {
+      const interval = setInterval(() => {
+        setMessageIndex((prev) => {
+          const newIndex = Math.min(prev + 1, generationMessages.length - 1);
+          setCurrentMessage(generationMessages[newIndex]);
+          return newIndex;
+        });
+      }, 2000); // Change message every 2 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [step, generationProgress]);
+
   const connectWallet = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Try Farcaster wallet first if available
       if (isFarcaster) {
         try {
           const farcasterModule = await import("@farcaster/miniapp-sdk");
@@ -100,7 +108,6 @@ function HomePageContent() {
         }
       }
 
-      // Fallback to standard web3 wallet
       if (typeof window.ethereum !== "undefined") {
         await window.ethereum.request({ method: "eth_requestAccounts" });
         const provider = new ethers.BrowserProvider(window.ethereum);
@@ -138,17 +145,16 @@ function HomePageContent() {
       setError(null);
       setStep("generating");
       setGenerationProgress(0);
+      setMessageIndex(0);
       setCurrentMessage(generationMessages[0]);
 
-      // Simulate progress updates
+      // Simulate progress with story messages
       const progressInterval = setInterval(() => {
         setGenerationProgress((prev) => {
-          const newProgress = Math.min(prev + 2, 95);
-          const message = getGenerationMessage(newProgress);
-          setCurrentMessage(message);
+          const newProgress = Math.min(prev + 1.5, 95);
           return newProgress;
         });
-      }, 500);
+      }, 200);
 
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -160,14 +166,18 @@ function HomePageContent() {
 
       clearInterval(progressInterval);
       setGenerationProgress(100);
+      setMessageIndex(generationMessages.length - 1);
       setCurrentMessage(generationMessages[generationMessages.length - 1]);
+
+      // Wait a bit for the final message to show
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       if (!response.ok) {
         if (response.status === 402) {
           try {
             const paymentData = await response.json();
-            const errorMessage = paymentData.message || paymentData.error || "Payment required for image generation";
-            setError(`${errorMessage}\n\nImage generation requires payment via x402 protocol.`);
+            const errorMessage = paymentData.message || paymentData.error || "Payment required";
+            setError(errorMessage);
             setStep("story");
             return;
           } catch {
@@ -182,7 +192,7 @@ function HomePageContent() {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
         } catch {
-          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+          errorMessage = `Server error: ${response.status}`;
         }
         throw new Error(errorMessage);
       }
@@ -206,7 +216,6 @@ function HomePageContent() {
       setError(null);
       setStep("minting");
 
-      // First request - should return 402
       const response = await fetch("/api/mint-permit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,30 +225,12 @@ function HomePageContent() {
       });
 
       if (response.status === 200) {
-        // Direct permit (mock mode - no x402 payment)
         const permitData: MintPermitResponse = await response.json();
         await mintNFT(permitData);
       } else if (response.status === 402) {
         const paymentRequest = await response.json();
+        alert(`Please pay ${paymentRequest.accepts[0].amount} ${paymentRequest.accepts[0].asset} to ${paymentRequest.accepts[0].recipient}`);
 
-        // Handle x402 payment
-        if (isFarcaster) {
-          // Use Farcaster wallet for payment
-          try {
-            // TODO: Implement Farcaster payment flow
-            alert(`Please pay ${paymentRequest.accepts[0].amount} ${paymentRequest.accepts[0].asset} to ${paymentRequest.accepts[0].recipient}`);
-          } catch (e) {
-            setError("Payment failed. Please try again.");
-            setStep("generated");
-            return;
-          }
-        } else {
-          // Standard web3 payment flow
-          alert(`Please pay ${paymentRequest.accepts[0].amount} ${paymentRequest.accepts[0].asset} to ${paymentRequest.accepts[0].recipient}`);
-        }
-
-        // After payment, retry with X-PAYMENT header
-        // TODO: Implement actual x402 payment flow
         const paymentHeader = JSON.stringify({
           paymentId: "mock-payment-id",
           amount: paymentRequest.accepts[0].amount,
@@ -288,7 +279,6 @@ function HomePageContent() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // Contract ABI
       const contractABI = [
         "function mintWithSig((address to, address payer, uint256 xUserId, string tokenURI, uint256 nonce, uint256 deadline) auth, bytes signature) external",
       ];
@@ -299,7 +289,6 @@ function HomePageContent() {
         signer
       );
 
-      // Convert walletAddress to uint256 for contract
       const walletHash = ethers.id(permit.auth.walletAddress);
       const walletHashBigInt = BigInt(walletHash);
 
@@ -326,29 +315,56 @@ function HomePageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
-      <div className="container mx-auto px-4 py-8 md:py-16">
-        <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 md:mb-8">Aura Creatures</h1>
-        <p className="text-lg md:text-xl text-center mb-8 md:mb-12 text-gray-300 px-4">
-          {isFarcaster ? "Create your unique AI creature on Base" : "Connect your wallet, discover your story, and mint your unique AI creature on Base"}
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 via-blue-500 to-cyan-400 animate-gradient bg-[length:400%_400%] relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob"></div>
+        <div className="absolute top-40 right-10 w-72 h-72 bg-pink-400 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
+      </div>
 
-        <div className="max-w-2xl mx-auto">
+      <div className="container mx-auto px-4 py-8 md:py-16 relative z-10">
+        {/* Header */}
+        <div className="text-center mb-8 md:mb-12">
+          <h1 className="text-5xl md:text-7xl font-black mb-4 bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 animate-pulse">
+            AURA CREATURES
+          </h1>
+          <p className="text-xl md:text-2xl font-bold text-white/90 drop-shadow-lg">
+            Where Your Wallet Becomes Legendary ✨
+          </p>
+          <div className="flex justify-center gap-2 mt-4">
+            <span className="text-2xl animate-bounce">🎨</span>
+            <span className="text-2xl animate-bounce animation-delay-200">🚀</span>
+            <span className="text-2xl animate-bounce animation-delay-400">💎</span>
+          </div>
+        </div>
+
+        <div className="max-w-3xl mx-auto">
           {error && (
-            <div className="bg-red-500/90 text-white p-4 rounded-lg mb-6 animate-pulse">
-              {error}
+            <div className="bg-red-500/90 text-white p-4 rounded-2xl mb-6 animate-shake border-2 border-red-300 shadow-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">⚠️</span>
+                <p className="font-bold">{error}</p>
+              </div>
             </div>
           )}
 
           {/* Wallet Connection Step */}
           {step === "wallet" && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 md:p-8 text-center">
-              <h2 className="text-2xl md:text-3xl font-bold mb-4">Step 1: Connect Wallet</h2>
-              <p className="mb-6 text-gray-300">Connect your wallet to begin your journey</p>
+            <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 text-center border-2 border-white/30 shadow-2xl transform hover:scale-[1.02] transition-all">
+              <div className="text-6xl md:text-8xl mb-6 animate-bounce">🔐</div>
+              <h2 className="text-3xl md:text-4xl font-black mb-4 text-white drop-shadow-lg">
+                Step 1: Connect Your Wallet
+              </h2>
+              <p className="mb-8 text-white/90 text-lg font-semibold">
+                Unlock the gateway to your digital destiny
+              </p>
 
               {wallet && (
-                <div className="mb-6 bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-sm">
-                  ✅ Wallet Connected: {wallet.substring(0, 6)}...{wallet.substring(wallet.length - 4)}
+                <div className="mb-6 bg-green-500/30 border-2 border-green-400 rounded-2xl p-4 text-sm backdrop-blur-sm">
+                  <p className="text-white font-bold">
+                    ✅ Connected: {wallet.substring(0, 6)}...{wallet.substring(wallet.length - 4)}
+                  </p>
                 </div>
               )}
 
@@ -358,16 +374,16 @@ function HomePageContent() {
                 className={`${
                   wallet
                     ? "bg-gray-600 cursor-not-allowed"
-                    : "bg-purple-500 hover:bg-purple-600"
-                } text-white font-bold py-3 px-6 rounded-lg w-full transition-colors`}
+                    : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl"
+                } text-white font-black py-4 px-8 rounded-2xl w-full text-xl transition-all transform hover:scale-105 active:scale-95`}
               >
-                {loading ? "Connecting..." : wallet ? "✅ Wallet Connected" : "Connect Wallet"}
+                {loading ? "Connecting..." : wallet ? "✅ Wallet Connected" : "🔗 Connect Wallet"}
               </button>
 
               {wallet && (
                 <button
                   onClick={() => setStep("story")}
-                  className="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg w-full transition-colors"
+                  className="mt-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-black py-4 px-8 rounded-2xl w-full text-xl transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
                 >
                   Continue to Story →
                 </button>
@@ -377,102 +393,139 @@ function HomePageContent() {
 
           {/* Story Step */}
           {step === "story" && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 md:p-8">
-              <h2 className="text-2xl md:text-3xl font-bold mb-6 text-center">Your Aura Creature Story</h2>
+            <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 border-2 border-white/30 shadow-2xl">
+              <h2 className="text-3xl md:text-4xl font-black mb-8 text-center text-white drop-shadow-lg">
+                🎭 The Legend of Aura Creatures
+              </h2>
 
-              <div className="space-y-4 mb-6 text-gray-200">
-                <p className="text-lg">
-                  🌟 <strong>In a realm where digital magic meets blockchain...</strong>
-                </p>
-                <p>
-                  Every wallet holds a unique essence, a signature that defines who you are in this vast
-                  digital universe. Your Aura Creature is waiting to be born, shaped by the very essence
-                  of your wallet address.
-                </p>
-                <p>
-                  🎨 Our AI will analyze your unique wallet signature and create a one-of-a-kind creature
-                  just for you. Each trait—color, expression, outfit, and more—is determined by your
-                  wallet&apos;s unique identity.
-                </p>
-                <p>
-                  ✨ Once created, your creature becomes a permanent NFT on Base, a testament to your
-                  journey in the Web3 world.
-                </p>
+              <div className="space-y-6 mb-8 text-white/95 text-lg leading-relaxed">
+                <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl p-6 border border-white/20">
+                  <p className="font-bold text-2xl mb-2">🌟 In a realm where digital magic meets blockchain...</p>
+                  <p>
+                    Every wallet holds a unique essence, a signature that defines who you are in this vast digital
+                    universe. Your Aura Creature is waiting to be born, shaped by the very essence of your wallet
+                    address.
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-2xl p-6 border border-white/20">
+                  <p className="font-bold text-2xl mb-2">🎨 The AI Magic</p>
+                  <p>
+                    Our AI will analyze your unique wallet signature and create a one-of-a-kind creature just for you.
+                    Each trait—color, expression, outfit, and more—is determined by your wallet&apos;s unique identity.
+                    No two creatures are ever the same!
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-2xl p-6 border border-white/20">
+                  <p className="font-bold text-2xl mb-2">✨ Eternal on Base</p>
+                  <p>
+                    Once created, your creature becomes a permanent NFT on Base blockchain, a testament to your journey
+                    in the Web3 world. Own a piece of digital history that&apos;s uniquely yours!
+                  </p>
+                </div>
               </div>
 
               {wallet && (
-                <div className="mb-6 p-4 bg-purple-500/20 border border-purple-500/50 rounded-lg text-sm">
-                  <p><strong>Wallet:</strong> {wallet.substring(0, 6)}...{wallet.substring(wallet.length - 4)}</p>
+                <div className="mb-6 p-4 bg-purple-500/30 border-2 border-purple-400 rounded-2xl text-sm backdrop-blur-sm">
+                  <p className="text-white font-bold">
+                    <span className="text-2xl">👛</span> Wallet: {wallet.substring(0, 6)}...
+                    {wallet.substring(wallet.length - 4)}
+                  </p>
                 </div>
               )}
 
               <button
                 onClick={generateNFT}
                 disabled={loading || !wallet}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg w-full text-lg transition-all transform hover:scale-105"
+                className="bg-gradient-to-r from-purple-600 via-pink-500 to-red-500 hover:from-purple-700 hover:via-pink-600 hover:to-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-black py-5 px-8 rounded-2xl w-full text-2xl transition-all transform hover:scale-105 active:scale-95 shadow-2xl hover:shadow-3xl disabled:transform-none"
               >
-                {loading ? "Creating..." : "✨ Create My Aura Creature ✨"}
+                {loading ? (
+                  "Creating..."
+                ) : (
+                  <>
+                    ✨ CREATE MY AURA CREATURE ✨
+                    <br />
+                    <span className="text-lg">Let the magic begin! 🚀</span>
+                  </>
+                )}
               </button>
             </div>
           )}
 
           {/* Generating Step */}
           {step === "generating" && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 md:p-8 text-center">
-              <h2 className="text-2xl md:text-3xl font-bold mb-6">Creating Your Creature...</h2>
+            <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 text-center border-2 border-white/30 shadow-2xl">
+              <h2 className="text-3xl md:text-4xl font-black mb-8 text-white drop-shadow-lg animate-pulse">
+                Creating Your Legend...
+              </h2>
 
-              <div className="mb-6">
-                <div className="text-6xl mb-4 animate-bounce">✨</div>
-                <p className="text-xl font-semibold mb-4 text-purple-300">{currentMessage}</p>
-                <div className="w-full bg-gray-700 rounded-full h-4 mb-2">
-                  <div
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-4 rounded-full transition-all duration-500"
-                    style={{ width: `${generationProgress}%` }}
-                  ></div>
+              <div className="mb-8">
+                <div className="text-8xl md:text-9xl mb-6 animate-spin-slow">🎨</div>
+                <div className="bg-black/30 rounded-2xl p-6 mb-6 border-2 border-white/20">
+                  <p className="text-xl md:text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 animate-pulse">
+                    {currentMessage}
+                  </p>
+                  <div className="w-full bg-gray-700 rounded-full h-6 mb-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 h-6 rounded-full transition-all duration-500 flex items-center justify-end pr-2"
+                      style={{ width: `${generationProgress}%` }}
+                    >
+                      <span className="text-white text-xs font-bold">{Math.round(generationProgress)}%</span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-400">{generationProgress}%</p>
               </div>
 
-              <div className="space-y-2 text-gray-300 text-sm">
-                <p>🔄 The AI is working its magic...</p>
-                <p>⏳ This may take 10-30 seconds</p>
+              <div className="space-y-3 text-white/80 text-sm">
+                <p className="animate-pulse">🔄 The AI is working its magic...</p>
+                <p>⏳ This may take 15-30 seconds</p>
+                <p className="text-yellow-300 font-bold">✨ Sit back and watch the story unfold! ✨</p>
               </div>
             </div>
           )}
 
           {/* Generated Step */}
           {step === "generated" && generated && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 md:p-8">
-              <h2 className="text-2xl md:text-3xl font-bold mb-6 text-center">Your Aura Creature is Ready! 🎉</h2>
+            <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 border-2 border-white/30 shadow-2xl">
+              <h2 className="text-3xl md:text-4xl font-black mb-8 text-center text-white drop-shadow-lg animate-pulse">
+                🎉 YOUR AURA CREATURE IS READY! 🎉
+              </h2>
 
-              <div className="mb-6">
+              <div className="mb-8">
                 {generated.preview && (
-                  <div className="mb-4">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={generated.preview}
-                      alt="Generated NFT"
-                      className="w-full rounded-lg border-2 border-purple-500/50 shadow-lg"
-                    />
+                  <div className="mb-6 animate-fade-in">
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 via-pink-500 to-red-500 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-1000"></div>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={generated.preview}
+                        alt="Generated NFT"
+                        className="relative w-full rounded-3xl border-4 border-white/50 shadow-2xl transform group-hover:scale-105 transition-transform"
+                      />
+                    </div>
                   </div>
                 )}
 
                 {!generated.preview && generated.imageUrl && (
-                  <div className="mb-4">
+                  <div className="mb-6">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={generated.imageUrl.replace("ipfs://", "https://ipfs.io/ipfs/")}
                       alt="Generated NFT"
-                      className="w-full rounded-lg border-2 border-purple-500/50 shadow-lg"
+                      className="w-full rounded-3xl border-4 border-white/50 shadow-2xl"
                     />
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                   {Object.entries(generated.traits).map(([key, value]) => (
-                    <div key={key} className="bg-white/5 p-3 rounded border border-white/10">
-                      <div className="font-semibold capitalize text-purple-300">{key}</div>
-                      <div className="text-gray-300">{value}</div>
+                    <div
+                      key={key}
+                      className="bg-gradient-to-br from-purple-500/30 to-pink-500/30 backdrop-blur-sm p-4 rounded-2xl border-2 border-white/20 transform hover:scale-105 transition-all"
+                    >
+                      <div className="font-black capitalize text-purple-200 text-sm mb-1">{key}</div>
+                      <div className="text-white font-bold">{value}</div>
                     </div>
                   ))}
                 </div>
@@ -481,33 +534,134 @@ function HomePageContent() {
               <button
                 onClick={requestMintPermit}
                 disabled={loading}
-                className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg w-full text-lg transition-all transform hover:scale-105"
+                className="bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 hover:from-yellow-500 hover:via-orange-600 hover:to-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-black py-5 px-8 rounded-2xl w-full text-2xl transition-all transform hover:scale-105 active:scale-95 shadow-2xl hover:shadow-3xl"
               >
-                {loading ? "Processing..." : "🚀 Mint My NFT"}
+                {loading ? (
+                  "Processing..."
+                ) : (
+                  <>
+                    🚀 MINT MY NFT ON BASE 🚀
+                    <br />
+                    <span className="text-lg">Make it permanent! 💎</span>
+                  </>
+                )}
               </button>
             </div>
           )}
 
           {/* Minting Step */}
           {step === "minting" && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 md:p-8 text-center">
-              <h2 className="text-2xl md:text-3xl font-bold mb-6">Minting Your NFT...</h2>
-              <div className="text-6xl mb-4 animate-spin">⚡</div>
-              <p className="text-gray-300">Your creature is being minted on Base blockchain</p>
+            <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 text-center border-2 border-white/30 shadow-2xl">
+              <h2 className="text-3xl md:text-4xl font-black mb-8 text-white drop-shadow-lg">
+                Minting Your NFT...
+              </h2>
+              <div className="text-8xl md:text-9xl mb-6 animate-spin-slow">⚡</div>
+              <p className="text-white text-xl font-bold">Your creature is being minted on Base blockchain</p>
+              <p className="text-white/80 mt-4">This will take just a moment...</p>
             </div>
           )}
 
           {/* Minted Step */}
           {step === "minted" && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 md:p-8 text-center">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">🎉 Success! 🎉</h2>
-              <p className="text-xl md:text-2xl text-gray-300 mb-6">Your Aura Creature NFT has been minted!</p>
-              <div className="text-6xl mb-4">✨</div>
-              <p className="text-gray-400">Check your wallet to see your new NFT</p>
+            <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 text-center border-2 border-white/30 shadow-2xl animate-fade-in">
+              <div className="text-8xl md:text-9xl mb-6 animate-bounce">🎉</div>
+              <h2 className="text-4xl md:text-5xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400">
+                SUCCESS!
+              </h2>
+              <p className="text-2xl md:text-3xl text-white font-bold mb-6 drop-shadow-lg">
+                Your Aura Creature NFT has been minted!
+              </p>
+              <div className="text-6xl mb-6 animate-pulse">✨</div>
+              <p className="text-white/90 text-lg font-semibold">Check your wallet to see your new NFT</p>
+              <div className="mt-8 space-y-2">
+                <p className="text-yellow-300 font-bold text-xl">🚀 Welcome to the Aura Creatures family! 🚀</p>
+                <p className="text-white/80">Share your creation with the world!</p>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes gradient {
+          0%,
+          100% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+        }
+        .animate-gradient {
+          animation: gradient 15s ease infinite;
+        }
+        @keyframes blob {
+          0%,
+          100% {
+            transform: translate(0, 0) scale(1);
+          }
+          33% {
+            transform: translate(30px, -50px) scale(1.1);
+          }
+          66% {
+            transform: translate(-20px, 20px) scale(0.9);
+          }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+        .animation-delay-200 {
+          animation-delay: 0.2s;
+        }
+        .animation-delay-400 {
+          animation-delay: 0.4s;
+        }
+        @keyframes spin-slow {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        .animate-spin-slow {
+          animation: spin-slow 3s linear infinite;
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-out;
+        }
+        @keyframes shake {
+          0%,
+          100% {
+            transform: translateX(0);
+          }
+          25% {
+            transform: translateX(-5px);
+          }
+          75% {
+            transform: translateX(5px);
+          }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   );
 }
@@ -516,8 +670,8 @@ export default function HomePage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-          <div className="text-white text-xl">Loading...</div>
+        <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-blue-500 flex items-center justify-center">
+          <div className="text-white text-4xl font-black animate-pulse">Loading...</div>
         </div>
       }
     >
