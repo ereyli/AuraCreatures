@@ -59,6 +59,13 @@ export async function exchangeCodeForToken(
 ): Promise<{ access_token: string; token_type: string } | null> {
   try {
     const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    
+    console.log("🔄 Exchanging authorization code for token:", {
+      codeLength: code.length,
+      clientId: clientId.substring(0, 10) + "...",
+      redirectUri,
+    });
+    
     const response = await axios.post(
       "https://api.twitter.com/2/oauth2/token",
       new URLSearchParams({
@@ -76,9 +83,24 @@ export async function exchangeCodeForToken(
       }
     );
     
+    console.log("✅ Token exchange successful");
     return response.data;
-  } catch (error) {
-    console.error("X OAuth error:", error);
+  } catch (error: any) {
+    console.error("❌ X OAuth token exchange error:", {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      note: "Check if Client ID, Secret, and Callback URI match X Developer Portal",
+    });
+    
+    // Provide more detailed error information
+    if (error.response?.status === 400) {
+      console.error("💡 Common causes: Invalid code, expired code, or redirect_uri mismatch");
+    } else if (error.response?.status === 401) {
+      console.error("💡 Common causes: Invalid Client ID or Secret");
+    }
+    
     return null;
   }
 }
