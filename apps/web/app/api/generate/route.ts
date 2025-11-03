@@ -18,10 +18,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
     
-    // Rate limiting (fail-open if KV unavailable)
-    const allowed = await checkGenerateRateLimit(x_user_id);
-    if (!allowed) {
-      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    // Rate limiting (OPTIONAL - fail-open if KV unavailable)
+    // Purpose: Prevent abuse (too many requests per hour)
+    // Note: If KV/database is unavailable, we allow the request to proceed
+    try {
+      const allowed = await checkGenerateRateLimit(x_user_id);
+      if (!allowed) {
+        return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      }
+    } catch (rateLimitError) {
+      console.warn("⚠️ Rate limit check failed, allowing request (fail-open):", rateLimitError);
+      // Continue without rate limiting if KV is unavailable
     }
     
     // Acquire lock to prevent duplicate generation (fail-open if KV unavailable)
