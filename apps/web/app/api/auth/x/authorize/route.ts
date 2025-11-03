@@ -38,15 +38,15 @@ export async function GET(request: NextRequest) {
   // Note: X OAuth 2.0 supports both with and without PKCE
   const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`;
   
-  // Log for debugging (only in development)
-  if (process.env.NODE_ENV === "development") {
-    console.log("🔍 X OAuth Debug:", {
-      clientId: clientId.substring(0, 10) + "...",
-      redirectUri,
-      callbackPath: new URL(redirectUri).pathname,
-      authUrl: authUrl.substring(0, 100) + "...",
-    });
-  }
+  // Log for debugging (always log in production too for troubleshooting)
+  console.log("🔍 X OAuth Authorization URL Generated:", {
+    clientId: clientId.substring(0, 10) + "...",
+    redirectUri,
+    callbackPath: new URL(redirectUri).pathname,
+    scope,
+    authUrlLength: authUrl.length,
+    note: "Make sure redirectUri matches EXACTLY in X Developer Portal",
+  });
   
   return NextResponse.json({ 
     authUrl,

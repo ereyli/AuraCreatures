@@ -61,6 +61,36 @@ function HomePageContent() {
     checkWalletConnection();
   }, []);
 
+  const checkXOAuthConfig = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch("/api/auth/x/debug");
+      const data = await response.json();
+      
+      let message = `${data.status}\n\n`;
+      message += `Konfigürasyon:\n`;
+      message += `- Client ID: ${data.config.hasClientId ? "✅" : "❌"}\n`;
+      message += `- Client Secret: ${data.config.hasClientSecret ? "✅" : "❌"}\n`;
+      message += `- Callback URL: ${data.config.hasCallbackUrl ? "✅" : "❌"}\n`;
+      message += `- Callback URL: ${data.config.callbackUrl}\n`;
+      message += `- Callback Path: ${data.config.callbackPath}\n`;
+      
+      if (data.issues && data.issues.length > 0) {
+        message += `\nSorunlar:\n${data.issues.join("\n")}\n`;
+      }
+      
+      message += `\nÖneriler:\n${data.recommendations.join("\n")}`;
+      
+      setError(message);
+    } catch (err) {
+      setError("Debug bilgisi alınamadı: " + (err instanceof Error ? err.message : "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const connectX = async () => {
     try {
       setLoading(true);
@@ -71,15 +101,51 @@ function HomePageContent() {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Failed to initiate X OAuth" }));
-        throw new Error(errorData.error || "X OAuth not configured");
+        
+        // Show detailed error message
+        const errorMessage = errorData.error || "X OAuth not configured";
+        const errorDetails = errorData.details || {};
+        
+        let fullError = errorMessage;
+        if (errorData.details) {
+          fullError += "\n\nKonfigürasyon durumu:\n";
+          if (errorData.details.hasClientId !== undefined) {
+            fullError += `- Client ID: ${errorData.details.hasClientId ? "✅" : "❌"}\n`;
+          }
+          if (errorData.details.hasClientSecret !== undefined) {
+            fullError += `- Client Secret: ${errorData.details.hasClientSecret ? "✅" : "❌"}\n`;
+          }
+          if (errorData.details.hasCallbackUrl !== undefined) {
+            fullError += `- Callback URL: ${errorData.details.hasCallbackUrl ? "✅" : "❌"}\n`;
+          }
+          if (errorData.details.callbackUrl) {
+            fullError += `- Callback URL değeri: ${errorData.details.callbackUrl}\n`;
+          }
+          fullError += `\n💡 İpucu: "Check Config" butonuna tıklayarak detaylı kontrol yapabilirsin.`;
+        }
+        
+        throw new Error(fullError);
       }
       
-      const { authUrl } = await response.json();
+      const data = await response.json();
+      const { authUrl, debug } = data;
+      
+      if (!authUrl) {
+        throw new Error("OAuth URL alınamadı");
+      }
+      
+      // Log debug info in development
+      if (debug && process.env.NODE_ENV === "development") {
+        console.log("🔍 X OAuth Debug:", debug);
+      }
       
       // Redirect to X OAuth
+      console.log("🔗 Redirecting to X OAuth:", authUrl.substring(0, 100) + "...");
       window.location.href = authUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to connect X");
+      const errorMessage = err instanceof Error ? err.message : "Failed to connect X";
+      console.error("❌ X OAuth connection error:", errorMessage);
+      setError(errorMessage);
       setLoading(false);
     }
   };
@@ -351,17 +417,27 @@ function HomePageContent() {
               </div>
               
               <div className="space-y-4">
-                <button
-                  onClick={connectX}
-                  disabled={loading || !!xUser}
-                  className={`${
-                    xUser 
-                      ? "bg-gray-600 cursor-not-allowed" 
-                      : "bg-blue-500 hover:bg-blue-600"
-                  } text-white font-bold py-3 px-6 rounded-lg w-full`}
-                >
-                  {xUser ? "✅ X Account Connected" : "Connect X Account"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={connectX}
+                    disabled={loading || !!xUser}
+                    className={`${
+                      xUser 
+                        ? "bg-gray-600 cursor-not-allowed" 
+                        : "bg-blue-500 hover:bg-blue-600"
+                    } text-white font-bold py-3 px-6 rounded-lg flex-1`}
+                  >
+                    {xUser ? "✅ X Account Connected" : "Connect X Account"}
+                  </button>
+                  <button
+                    onClick={checkXOAuthConfig}
+                    disabled={loading}
+                    className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg"
+                    title="Check X OAuth Configuration"
+                  >
+                    🔍
+                  </button>
+                </div>
                 <button
                   onClick={connectWallet}
                   disabled={loading || !!wallet}
