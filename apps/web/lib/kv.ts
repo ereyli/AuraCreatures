@@ -62,8 +62,18 @@ const supabaseKvClient = {
         return result.rows[0].value as string;
       }
       return null;
-    } catch (error) {
-      console.error("Supabase KV get error:", error);
+    } catch (error: any) {
+      // Check if it's a connection error
+      if (error?.code === "ENOTFOUND" || error?.code === "ECONNREFUSED") {
+        console.error("❌ Supabase KV connection error - DATABASE_URL may be wrong or Supabase is down:", {
+          code: error.code,
+          hostname: error.hostname || "unknown",
+          message: error.message,
+          note: "Check Vercel environment variables - DATABASE_URL should be set"
+        });
+      } else {
+        console.error("Supabase KV get error:", error);
+      }
       return null;
     }
   },
@@ -202,17 +212,29 @@ const supabaseKvClient = {
 // Use Supabase if database is available and not in mock mode
 let kvClient: typeof mockKvClient | typeof supabaseKvClient = mockKvClient;
 
+// Check if we can use Supabase KV
 if (!isMockMode && env.DATABASE_URL && !env.DATABASE_URL.includes("mock://")) {
+  // Validate DATABASE_URL format
   try {
-    kvClient = supabaseKvClient;
-    console.log("✅ Supabase KV (PostgreSQL) connected successfully");
-  } catch (error) {
-    console.warn("⚠️ Failed to initialize Supabase KV, using mock mode:", error);
+    const dbUrl = new URL(env.DATABASE_URL);
+    if (dbUrl.protocol === "postgresql:" || dbUrl.protocol === "postgres:") {
+      // Test if we can access db (lazy connection - will fail on first use if wrong)
+      kvClient = supabaseKvClient;
+      console.log("✅ Supabase KV (PostgreSQL) will be used");
+    } else {
+      console.warn("⚠️ Invalid DATABASE_URL protocol, using mock KV:", dbUrl.protocol);
+      kvClient = mockKvClient;
+    }
+  } catch (urlError) {
+    console.error("❌ Invalid DATABASE_URL format, using mock KV:", urlError);
     kvClient = mockKvClient;
   }
 } else {
   if (isMockMode || !env.DATABASE_URL || env.DATABASE_URL.includes("mock://")) {
-    console.log("ℹ️ Using mock KV storage (development mode)");
+    console.log("ℹ️ Using mock KV storage (development mode or DATABASE_URL not configured)");
+  } else {
+    console.warn("⚠️ DATABASE_URL not set in production - using mock KV (cookie fallback will be used for PKCE)");
+    kvClient = mockKvClient;
   }
 }
 
