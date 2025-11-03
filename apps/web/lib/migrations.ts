@@ -44,6 +44,21 @@ export async function runMigrations() {
     );
   `);
 
+  // Create kv_store table for key-value storage (Supabase alternative to Redis KV)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS kv_store (
+      key VARCHAR(255) PRIMARY KEY,
+      value TEXT NOT NULL,
+      expires_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // Create index for expired key cleanup
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_kv_store_expires_at ON kv_store(expires_at);
+  `);
+
   // Create indexes
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS idx_users_x_user_id ON users(x_user_id);

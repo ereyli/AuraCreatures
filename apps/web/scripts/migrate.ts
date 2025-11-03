@@ -60,6 +60,17 @@ async function runMigrations() {
     `;
     console.log("✓ payments table created");
 
+    // KV Store table (Supabase alternative to Redis KV)
+    await sql`
+      CREATE TABLE IF NOT EXISTS kv_store (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `;
+    console.log("✓ kv_store table created");
+
     // Indexes
     await sql`
       CREATE INDEX IF NOT EXISTS idx_users_x_user_id ON users(x_user_id);
@@ -69,6 +80,9 @@ async function runMigrations() {
     `;
     await sql`
       CREATE INDEX IF NOT EXISTS idx_payments_x_user_id ON payments(x_user_id);
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_kv_store_expires_at ON kv_store(expires_at);
     `;
     console.log("✓ indexes created");
 

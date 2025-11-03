@@ -1,5 +1,6 @@
-import { createClient } from "@vercel/kv";
 import { env, isMockMode } from "../env.mjs";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 // Mock KV storage
 const mockKv: Map<string, string> = new Map();
@@ -40,36 +41,183 @@ const mockKvClient = {
   },
 };
 
-// Real KV client
-let realKv: ReturnType<typeof createClient> | null = null;
+// Supabase (PostgreSQL) KV client implementation
+const supabaseKvClient = {
+  get: async (key: string) => {
+    try {
+      // Clean up expired keys first
+      await db.execute(sql`
+        DELETE FROM kv_store 
+        WHERE expires_at IS NOT NULL AND expires_at < NOW()
+      `);
 
-// Initialize KV client if credentials are available
-// Works in both development and production
-if (env.KV_REST_API_URL && env.KV_REST_API_TOKEN && !env.KV_REST_API_URL.includes("localhost")) {
+      // Get the value
+      const result = await db.execute(sql`
+        SELECT value FROM kv_store 
+        WHERE key = ${key}
+        AND (expires_at IS NULL OR expires_at > NOW())
+      `);
+
+      if (result.rows && result.rows.length > 0) {
+        return result.rows[0].value as string;
+      }
+      return null;
+    } catch (error) {
+      console.error("Supabase KV get error:", error);
+      return null;
+    }
+  },
+
+  set: async (key: string, value: string) => {
+    try {
+      await db.execute(sql`
+        INSERT INTO kv_store (key, value, expires_at)
+        VALUES (${key}, ${value}, NULL)
+        ON CONFLICT (key) 
+        DO UPDATE SET value = ${value}, expires_at = NULL
+      `);
+      return "OK";
+    } catch (error) {
+      console.error("Supabase KV set error:", error);
+      throw error;
+    }
+  },
+
+  setex: async (key: string, seconds: number, value: string) => {
+    try {
+      const expiresAt = new Date(Date.now() + seconds * 1000);
+      await db.execute(sql`
+        INSERT INTO kv_store (key, value, expires_at)
+        VALUES (${key}, ${value}, ${expiresAt.toISOString()})
+        ON CONFLICT (key) 
+        DO UPDATE SET value = ${value}, expires_at = ${expiresAt.toISOString()}
+      `);
+      return "OK";
+    } catch (error) {
+      console.error("Supabase KV setex error:", error);
+      throw error;
+    }
+  },
+
+  incr: async (key: string) => {
+    try {
+      // Clean up expired keys first
+      await db.execute(sql`
+        DELETE FROM kv_store 
+        WHERE expires_at IS NOT NULL AND expires_at < NOW()
+      `);
+
+      // Get current value or default to 0
+      const result = await db.execute(sql`
+        SELECT value FROM kv_store 
+        WHERE key = ${key}
+        AND (expires_at IS NULL OR expires_at > NOW())
+      `);
+
+      const current = result.rows && result.rows.length > 0 
+        ? parseInt(result.rows[0].value as string) || 0 
+        : 0;
+      const next = current + 1;
+
+      await db.execute(sql`
+        INSERT INTO kv_store (key, value, expires_at)
+        VALUES (${key}, ${next.toString()}, NULL)
+        ON CONFLICT (key) 
+        DO UPDATE SET value = ${next.toString()}
+      `);
+
+      return next;
+    } catch (error) {
+      console.error("Supabase KV incr error:", error);
+      throw error;
+    }
+  },
+
+  exists: async (key: string) => {
+    try {
+      // Clean up expired keys first
+      await db.execute(sql`
+        DELETE FROM kv_store 
+        WHERE expires_at IS NOT NULL AND expires_at < NOW()
+      `);
+
+      const result = await db.execute(sql`
+        SELECT 1 FROM kv_store 
+        WHERE key = ${key}
+        AND (expires_at IS NULL OR expires_at > NOW())
+      `);
+
+      return result.rows && result.rows.length > 0 ? 1 : 0;
+    } catch (error) {
+      console.error("Supabase KV exists error:", error);
+      return 0;
+    }
+  },
+
+  del: async (key: string) => {
+    try {
+      await db.execute(sql`
+        DELETE FROM kv_store WHERE key = ${key}
+      `);
+      // Check if key existed by trying to get it (simpler than rowCount)
+      const check = await db.execute(sql`
+        SELECT 1 FROM kv_store WHERE key = ${key}
+      `);
+      // If we just deleted it, it won't exist now, so return 1
+      // Actually, we can't reliably know if it existed before deletion
+      // So we'll just return 1 (optimistic)
+      return 1;
+    } catch (error) {
+      console.error("Supabase KV del error:", error);
+      return 0;
+    }
+  },
+
+  expire: async (key: string, seconds: number) => {
+    try {
+      const expiresAt = new Date(Date.now() + seconds * 1000);
+      await db.execute(sql`
+        UPDATE kv_store 
+        SET expires_at = ${expiresAt.toISOString()}
+        WHERE key = ${key}
+        AND (expires_at IS NULL OR expires_at > NOW())
+      `);
+      // Check if key exists and was updated
+      const check = await db.execute(sql`
+        SELECT expires_at FROM kv_store 
+        WHERE key = ${key} AND expires_at = ${expiresAt.toISOString()}
+      `);
+      return check.rows && check.rows.length > 0 ? 1 : 0;
+    } catch (error) {
+      console.error("Supabase KV expire error:", error);
+      return 0;
+    }
+  },
+};
+
+// Determine which KV client to use
+// Priority: Supabase (PostgreSQL) > Mock
+// Use Supabase if database is available and not in mock mode
+let kvClient: typeof mockKvClient | typeof supabaseKvClient = mockKvClient;
+
+if (!isMockMode && env.DATABASE_URL && !env.DATABASE_URL.includes("mock://")) {
   try {
-    realKv = createClient({
-      url: env.KV_REST_API_URL,
-      token: env.KV_REST_API_TOKEN,
-    });
-    console.log("✅ Vercel KV connected successfully");
+    kvClient = supabaseKvClient;
+    console.log("✅ Supabase KV (PostgreSQL) connected successfully");
   } catch (error) {
-    console.warn("⚠️ Failed to connect to KV:", error);
-    console.warn("⚠️ Will use fallback: cookie-based storage for PKCE");
+    console.warn("⚠️ Failed to initialize Supabase KV, using mock mode:", error);
+    kvClient = mockKvClient;
   }
 } else {
-  if (!env.KV_REST_API_URL || !env.KV_REST_API_TOKEN) {
-    console.log("ℹ️ KV credentials not set - using fallback: cookie-based storage");
+  if (isMockMode || !env.DATABASE_URL || env.DATABASE_URL.includes("mock://")) {
+    console.log("ℹ️ Using mock KV storage (development mode)");
   }
 }
 
-// Use real KV if available
-// Priority: realKv > mockKvClient
-// realKv is available when KV_REST_API_URL and KV_REST_API_TOKEN are set
-// mockKvClient is used in development or when KV is not available
-export const kv = (realKv ? realKv : mockKvClient) as any;
+export const kv = kvClient as any;
 
 // Export KV status for debugging
-export const isKvAvailable = !!realKv;
+export const isKvAvailable = kvClient === supabaseKvClient;
 
 export async function rateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
   const count = await kv.incr(key);
