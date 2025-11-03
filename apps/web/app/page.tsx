@@ -223,6 +223,7 @@ function HomePageContent() {
       setError(null);
       setStep("minting");
 
+      // First request - may return 402 Payment Required
       const response = await fetch("/api/mint-permit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,21 +233,45 @@ function HomePageContent() {
       });
 
       if (response.status === 200) {
+        // Payment already verified or not required
         const permitData: MintPermitResponse = await response.json();
         await mintNFT(permitData);
       } else if (response.status === 402) {
+        // Payment required - x402 protocol
         const paymentRequest = await response.json();
-        alert(`Please pay ${paymentRequest.accepts[0].amount} ${paymentRequest.accepts[0].asset} to ${paymentRequest.accepts[0].recipient}`);
-
+        
+        // x402 payment flow
+        // For now, we'll use a simple approach - in production, use x402 client SDK
+        const paymentAmount = paymentRequest.accepts[0].amount;
+        const paymentAsset = paymentRequest.accepts[0].asset;
+        const paymentNetwork = paymentRequest.accepts[0].network;
+        const paymentRecipient = paymentRequest.accepts[0].recipient;
+        
+        // Show payment instruction
+        const userConfirmed = window.confirm(
+          `Payment Required: ${paymentAmount} ${paymentAsset}\n\n` +
+          `Network: ${paymentNetwork}\n` +
+          `Recipient: ${paymentRecipient}\n\n` +
+          `Please complete the payment using your wallet. After payment, click OK to retry.`
+        );
+        
+        if (!userConfirmed) {
+          setError("Payment cancelled");
+          setStep("generated");
+          return;
+        }
+        
+        // For testnet/development: Use mock payment
+        // In production, integrate with x402 client SDK to handle payment
         const paymentHeader = JSON.stringify({
-          paymentId: "mock-payment-id",
-          amount: paymentRequest.accepts[0].amount,
-          asset: paymentRequest.accepts[0].asset,
-          network: paymentRequest.accepts[0].network,
           payer: wallet,
-          recipient: paymentRequest.accepts[0].recipient,
+          amount: paymentAmount,
+          asset: paymentAsset,
+          network: paymentNetwork,
+          recipient: paymentRecipient,
         });
 
+        // Retry request with payment header
         const mintResponse = await fetch("/api/mint-permit", {
           method: "POST",
           headers: {
@@ -258,13 +283,16 @@ function HomePageContent() {
           }),
         });
 
-        if (!mintResponse.ok) {
+        if (mintResponse.status === 200) {
+          const permitData: MintPermitResponse = await mintResponse.json();
+          await mintNFT(permitData);
+        } else if (mintResponse.status === 402) {
+          const errorData = await mintResponse.json();
+          throw new Error(`Payment verification failed: ${errorData.error || "Please complete payment"}`);
+        } else {
           const errorData = await mintResponse.json();
           throw new Error(`Mint permit failed: ${errorData.error || "Unknown error"}`);
         }
-
-        const permitData: MintPermitResponse = await mintResponse.json();
-        await mintNFT(permitData);
       } else {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(`Unexpected response: ${errorData.error || "Unknown error"}`);

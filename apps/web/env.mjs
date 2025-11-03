@@ -23,7 +23,8 @@ const envSchema = z.object({
   KV_REST_API_TOKEN: z.string().optional(),
   // Note: If DATABASE_URL is set (Supabase), it will be used for KV storage instead of Vercel KV
   X402_FACILITATOR_URL: z.string().optional(),
-  X402_PRICE_USDC: z.string().default("2000000"),
+  X402_PRICE_USDC: z.string().default("6000000"), // 6 USDC (6 decimals)
+  X402_RECEIVER_WALLET: z.string().startsWith("0x").optional(), // Wallet to receive payments
   COLLECTION_THEME: z.string().default("frog"),
   MODEL_VERSION: z.string().default("v1.0.0"),
 }).transform((data) => ({

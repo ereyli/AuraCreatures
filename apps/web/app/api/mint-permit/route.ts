@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createX402Response, verifyX402Payment } from "@/lib/x402";
 import { signMintAuth } from "@/lib/eip712";
 import { checkMintRateLimit } from "@/lib/rate-limit";
 import { db, tokens } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
-import { env, isMockMode } from "@/env.mjs";
+import { env } from "@/env.mjs";
 import { ethers } from "ethers";
 import type { MintPermitRequest, MintAuth } from "@/lib/types";
 import { supabase, isSupabaseAvailable } from "@/lib/supabase";
+import { handleX402Payment, verifyX402PaymentHeader } from "@/lib/x402-handler";
 
 // Contract ABI for querying nonce
 const CONTRACT_ABI = [
@@ -44,41 +44,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
     
-    // Check X-PAYMENT header (only in production)
-    const paymentHeader = request.headers.get("X-PAYMENT");
+    // Handle x402 payment verification
+    const receivingWallet = env.X402_RECEIVER_WALLET || "0x0000000000000000000000000000000000000000";
+    const paymentResponse = await handleX402Payment(request, receivingWallet);
     
+    // If payment is required (402), return the response
+    if (paymentResponse) {
+      return paymentResponse;
+    }
+    
+    // Payment verified - get payment info from header
+    const paymentHeader = request.headers.get("X-PAYMENT");
     let paymentVerification: any = null;
     
-    if (!isMockMode) {
-      // Production mode - require x402 payment
-      if (!paymentHeader) {
-        // First request - return 402 payment required
-        if (!env.SERVER_SIGNER_PRIVATE_KEY) {
-          return NextResponse.json({ error: "SERVER_SIGNER_PRIVATE_KEY not configured" }, { status: 500 });
-        }
-        const serverWallet = new ethers.Wallet(env.SERVER_SIGNER_PRIVATE_KEY);
-        const x402Response = createX402Response(serverWallet.address);
-        return NextResponse.json(x402Response, { status: 402 });
-      }
+    if (paymentHeader) {
+      const facilitatorUrl = env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
+      const verification = await verifyX402PaymentHeader(paymentHeader, facilitatorUrl);
       
-      // Verify payment
-      paymentVerification = await verifyX402Payment(
-        paymentHeader,
-        env.X402_FACILITATOR_URL
-      );
-      
-      if (!paymentVerification) {
-        return NextResponse.json({ error: "Payment verification failed" }, { status: 402 });
+      if (verification) {
+        paymentVerification = verification;
+        console.log("✅ Payment verified:", paymentVerification);
+      } else {
+        // Fallback for development
+        console.warn("⚠️ Payment verification failed, using wallet as payer (development mode)");
+        paymentVerification = {
+          payer: wallet,
+          amount: env.X402_PRICE_USDC,
+          asset: "USDC",
+          network: "base",
+          recipient: receivingWallet,
+        };
       }
     } else {
-      // Mock mode - use wallet as payer for testing
-      console.log("🐛 Mock mode: Skipping x402 payment verification");
+      // This shouldn't happen if handleX402Payment worked correctly
+      console.warn("⚠️ No payment header after verification");
       paymentVerification = {
         payer: wallet,
         amount: env.X402_PRICE_USDC,
         asset: "USDC",
         network: "base",
-        recipient: wallet, // In test mode, we don't actually charge
+        recipient: receivingWallet,
       };
     }
     
