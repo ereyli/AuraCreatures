@@ -40,8 +40,26 @@ function HomePageContent() {
     }
   }, [searchParams, wallet]);
 
-  // Check for existing wallet connection on mount
+  // Check for existing X session and wallet connection on mount
   useEffect(() => {
+    const checkSession = async () => {
+      try {
+        // Check for existing X session
+        const sessionResponse = await fetch("/api/auth/x/session");
+        const sessionData = await sessionResponse.json();
+        
+        if (sessionData.authenticated && sessionData.user) {
+          setXUser(sessionData.user);
+          console.log("✅ Restored X session:", sessionData.user.username);
+          if (wallet) {
+            setStep("generate");
+          }
+        }
+      } catch (error) {
+        console.log("No X session found");
+      }
+    };
+
     const checkWalletConnection = async () => {
       if (typeof window.ethereum !== "undefined") {
         try {
@@ -50,6 +68,10 @@ function HomePageContent() {
           if (accounts.length > 0) {
             const address = await accounts[0].getAddress();
             setWallet(address);
+            // If X user is already connected, move to generate step
+            if (xUser) {
+              setStep("generate");
+            }
           }
         } catch (error) {
           // Wallet not connected, that's fine
@@ -58,6 +80,7 @@ function HomePageContent() {
       }
     };
 
+    checkSession();
     checkWalletConnection();
   }, []);
 

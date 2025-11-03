@@ -318,7 +318,39 @@ export async function GET(request: NextRequest) {
     
     const response = NextResponse.redirect(redirectUrl);
     
-    // Clean up cookie if it was used (fallback mode)
+    // Set session cookie to persist user authentication across page refreshes
+    // This cookie stores encrypted user data so user doesn't need to reconnect
+    const crypto = require("crypto");
+    const secretKey = env.X_CLIENT_SECRET?.substring(0, 32) || "fallback_secret_key_12345678";
+    const iv = crypto.randomBytes(16);
+    const sessionData = JSON.stringify({
+      x_user_id: xUser.x_user_id,
+      username: xUser.username,
+      profile_image_url: xUser.profile_image_url,
+      bio: xUser.bio,
+      timestamp: Date.now(),
+    });
+    const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(secretKey.padEnd(32, "0")), iv);
+    let encrypted = cipher.update(sessionData, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    const encryptedSession = iv.toString("hex") + ":" + encrypted;
+    
+    // Set session cookie (lasts 7 days)
+    response.cookies.set("x_user_session", encryptedSession, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    });
+    
+    console.log("✅ Session cookie set for user:", {
+      username: xUser.username,
+      x_user_id: xUser.x_user_id,
+      expiresIn: "7 days",
+    });
+    
+    // Clean up PKCE verifier cookie if it was used (fallback mode)
     if (state) {
       const cookieName = `x_oauth_verifier_${state}`;
       response.cookies.delete(cookieName);
