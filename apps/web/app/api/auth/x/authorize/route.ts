@@ -61,8 +61,18 @@ export async function GET(request: NextRequest) {
   
   // X OAuth 2.0 Authorization Code Flow with PKCE
   // According to X docs: https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
-  const scope = "users.read";
+  // IMPORTANT: Request all required scopes
+  // - users.read: Required for /users/me endpoint
+  // - tweet.read: Optional but recommended for bio/description access
+  // - offline.access: Optional, for refresh tokens (if needed)
+  const scope = "users.read tweet.read offline.access";
   const state = Math.random().toString(36).substring(7);
+  
+  console.log("🔍 OAuth scope request:", {
+    scope,
+    scopeArray: scope.split(" "),
+    note: "All scopes must be approved by user during authorization",
+  });
   
   // Build authorization URL with PKCE (needed in both KV and cookie fallback modes)
   // Ensure redirect_uri is properly encoded

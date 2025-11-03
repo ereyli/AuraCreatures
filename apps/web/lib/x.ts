@@ -1,7 +1,8 @@
 import axios from "axios";
 import type { XUser } from "@/lib/types";
 
-const X_API_BASE = "https://api.twitter.com/2";
+// Use api.x.com instead of api.twitter.com (recommended by X for OAuth 2.0)
+const X_API_BASE = "https://api.x.com/2";
 
 export async function verifyXToken(accessToken: string): Promise<XUser | null> {
   try {
@@ -35,12 +36,19 @@ export async function verifyXToken(accessToken: string): Promise<XUser | null> {
     
     // Provide specific guidance for 403 errors
     if (error.response?.status === 403) {
-      console.error("💡 403 Forbidden - Possible causes:");
-      console.error("   1. X Developer Portal → User authentication settings → App permissions must be 'Read' or 'Read and Write'");
-      console.error("   2. The OAuth app may not have the required scopes enabled");
-      console.error("   3. The access token may not have the correct scopes");
-      console.error("   4. The app may need to be reviewed/approved by X");
-      console.error("💡 Check: X Developer Portal → Settings → User authentication settings");
+      console.error("💡 403 Forbidden - Detailed diagnosis:");
+      console.error("   1. SCOPE CHECK: Token must include 'users.read' scope");
+      console.error("      → Check token exchange response log above for 'scope' field");
+      console.error("      → If scope missing: Authorize URL must include 'scope=users.read'");
+      console.error("   2. API HOST: Using api.x.com (not api.twitter.com)");
+      console.error("   3. X Developer Portal → User authentication settings:");
+      console.error("      → App permissions: 'Read' or 'Read and Write'");
+      console.error("      → Type of App: 'Web App'");
+      console.error("      → Callback URI: Must match exactly");
+      console.error("   4. PLAN LIMITATION: Free plan may restrict /users/me endpoint");
+      console.error("      → Consider upgrading to Basic plan if scope is correct");
+      console.error("   5. APP REVIEW: App may need X approval/review");
+      console.error("💡 Quick test: Check token exchange log for 'scope' value above");
       if (error.response?.data) {
         console.error("💡 X API Error Response:", JSON.stringify(error.response.data, null, 2));
       }
@@ -55,6 +63,7 @@ export async function getXUserProfile(accessToken: string, userId: string): Prom
     const response = await axios.get(`${X_API_BASE}/users/${userId}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        "User-Agent": "AuraCreatures/1.0",
       },
       params: {
         "user.fields": "profile_image_url,description",
@@ -108,8 +117,9 @@ export async function exchangeCodeForToken(
       tokenParams.code_verifier = codeVerifier;
     }
     
+    // Use api.x.com for token exchange (recommended by X for OAuth 2.0)
     const response = await axios.post(
-      "https://api.twitter.com/2/oauth2/token",
+      "https://api.x.com/2/oauth2/token",
       new URLSearchParams(tokenParams),
       {
         headers: {
@@ -121,16 +131,26 @@ export async function exchangeCodeForToken(
     
     console.log("✅ Token exchange successful");
     
-    // Log token response (without sensitive data)
+    // Log token response (without sensitive data) - CRITICAL for debugging 403 errors
     const tokenData = response.data;
     console.log("🔍 Token response:", {
       tokenType: tokenData.token_type,
       hasAccessToken: !!tokenData.access_token,
       accessTokenLength: tokenData.access_token?.length || 0,
       hasScope: !!tokenData.scope,
-      scope: tokenData.scope || "Not provided",
+      scope: tokenData.scope || "NOT PROVIDED - THIS IS THE PROBLEM!",
+      scopeArray: tokenData.scope ? tokenData.scope.split(" ") : [],
       expiresIn: tokenData.expires_in || "Not provided",
     });
+    
+    // CRITICAL CHECK: Verify users.read scope is present
+    if (!tokenData.scope || !tokenData.scope.includes("users.read")) {
+      console.error("⚠️ WARNING: Token does not include 'users.read' scope!");
+      console.error("💡 This will cause 403 Forbidden on /users/me endpoint");
+      console.error("💡 Fix: Check authorize URL scope parameter - must include 'users.read'");
+    } else {
+      console.log("✅ Token includes 'users.read' scope - should work with /users/me");
+    }
     
     return response.data;
   } catch (error: any) {
