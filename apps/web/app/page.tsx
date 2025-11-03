@@ -140,7 +140,15 @@ function HomePageContent() {
       }
       
       // Redirect to X OAuth
-      console.log("🔗 Redirecting to X OAuth:", authUrl.substring(0, 100) + "...");
+      console.log("🔗 X OAuth Authorization URL:", authUrl);
+      console.log("🔍 URL Breakdown:", {
+        base: "https://twitter.com/i/oauth2/authorize",
+        clientId: clientId?.substring(0, 15) + "...",
+        redirectUri: redirectUri,
+        scope: "users.read offline.access",
+      });
+      
+      // Open in same window (required for OAuth flow)
       window.location.href = authUrl;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to connect X";

@@ -29,8 +29,9 @@ export async function GET(request: NextRequest) {
   }
   
   // X OAuth 2.0 scopes for API v2
-  // users.read: Read user profile information
-  // offline.access: Request refresh token (optional)
+  // users.read: Read user profile information (required for /users/me endpoint)
+  // offline.access: Request refresh token (optional, for long-lived tokens)
+  // Note: Space-separated format is correct for X OAuth 2.0
   const scope = "users.read offline.access";
   const state = Math.random().toString(36).substring(7);
   

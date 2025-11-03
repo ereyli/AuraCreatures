@@ -53,17 +53,34 @@ export async function GET(request: NextRequest) {
   
   // Check if authorization code is missing
   if (!code) {
+    const receivedParams = Object.fromEntries(searchParams.entries());
+    const isDirectAccess = Object.keys(receivedParams).length === 0;
+    
     console.error("❌ Missing authorization code:", {
-      receivedParams: Object.fromEntries(searchParams.entries()),
+      receivedParams,
+      isDirectAccess,
       expectedUrl: env.X_CALLBACK_URL,
       actualUrl: request.url,
-      note: "This usually means the callback URL doesn't match or user denied access",
+      urlHostname: new URL(request.url).hostname,
+      callbackHostname: env.X_CALLBACK_URL ? new URL(env.X_CALLBACK_URL).hostname : "N/A",
+      note: isDirectAccess 
+        ? "Direct access to callback URL (user didn't come from OAuth flow)"
+        : "OAuth flow returned but no code parameter (check error parameter)",
     });
     
     // Check if this is a direct callback URL access (without OAuth redirect)
-    const errorMsg = searchParams.has("error") 
-      ? `X hatası: ${error || "Bilinmeyen hata"}`
-      : "Authorization code gelmedi. X Developer Portal'daki Callback URI'yi kontrol edin.";
+    let errorMsg = "Authorization code gelmedi.";
+    
+    if (isDirectAccess) {
+      errorMsg = "Bu sayfaya doğrudan erişilemez. Lütfen 'Connect X Account' butonunu kullan.";
+    } else if (searchParams.has("error")) {
+      errorMsg = `X hatası: ${error || "Bilinmeyen hata"}`;
+      if (errorDescription) {
+        errorMsg += ` - ${errorDescription}`;
+      }
+    } else {
+      errorMsg = "Authorization code gelmedi. Callback URI eşleşmiyor olabilir. X Developer Portal ayarlarını kontrol edin.";
+    }
     
     return NextResponse.redirect(new URL(`/?error=${encodeURIComponent(errorMsg)}`, request.url));
   }
