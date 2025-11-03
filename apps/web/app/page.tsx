@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ethers } from "ethers";
 import type { GenerateResponse, MintPermitResponse } from "@/lib/types";
 
-export default function HomePage() {
+function HomePageContent() {
   const searchParams = useSearchParams();
   const [step, setStep] = useState<"connect" | "generate" | "pay" | "mint">("connect");
   const [xUser, setXUser] = useState<{ x_user_id: string; username: string; profile_image_url: string; bio?: string } | null>(null);
@@ -536,6 +536,18 @@ export default function HomePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   );
 }
 
