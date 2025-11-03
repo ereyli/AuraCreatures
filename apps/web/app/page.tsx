@@ -128,16 +128,35 @@ function HomePageContent() {
       }
       
       const data = await response.json();
-      const { authUrl, codeVerifier } = data;
+      const { authUrl, state } = data;
       
       if (!authUrl) {
         throw new Error("OAuth URL alınamadı");
       }
       
+      // Validate OAuth URL before redirect
+      try {
+        const url = new URL(authUrl);
+        if (url.hostname !== "twitter.com" && url.hostname !== "x.com") {
+          throw new Error(`Invalid OAuth URL hostname: ${url.hostname}`);
+        }
+        console.log("🔗 Valid OAuth URL:", {
+          hostname: url.hostname,
+          pathname: url.pathname,
+          hasState: !!state,
+          paramsCount: url.searchParams.toString().split("&").length,
+        });
+      } catch (urlError) {
+        console.error("❌ Invalid OAuth URL:", urlError);
+        throw new Error(`Invalid OAuth URL: ${authUrl.substring(0, 50)}...`);
+      }
+      
       // PKCE verifier is stored server-side (keyed by state)
       // No need to store in client
       console.log("🔗 Redirecting to X OAuth:", authUrl.substring(0, 100) + "...");
-      window.location.href = authUrl;
+      
+      // Use window.location.replace to prevent back button issues
+      window.location.replace(authUrl);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to connect X";
       console.error("❌ X OAuth connection error:", errorMessage);

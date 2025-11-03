@@ -65,17 +65,36 @@ export async function GET(request: NextRequest) {
   const state = Math.random().toString(36).substring(7);
   
   // Build authorization URL with PKCE (needed in both KV and cookie fallback modes)
+  // Ensure redirect_uri is properly encoded
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: redirectUri,
+    redirect_uri: redirectUri, // URLSearchParams will encode it properly
     scope: scope,
     state: state,
     code_challenge: challenge,
     code_challenge_method: "S256",
   });
   
-  const authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  // Use x.com instead of twitter.com (X's current domain)
+  const authUrl = `https://x.com/i/oauth2/authorize?${params.toString()}`;
+  
+  // Validate OAuth URL format
+  try {
+    const testUrl = new URL(authUrl);
+    if (!testUrl.searchParams.has("client_id") || !testUrl.searchParams.has("redirect_uri")) {
+      throw new Error("Invalid OAuth URL parameters");
+    }
+    console.log("✅ OAuth URL validated:", {
+      hasClientId: testUrl.searchParams.has("client_id"),
+      hasRedirectUri: testUrl.searchParams.has("redirect_uri"),
+      hasCodeChallenge: testUrl.searchParams.has("code_challenge"),
+      redirectUriValue: testUrl.searchParams.get("redirect_uri"),
+    });
+  } catch (urlError) {
+    console.error("❌ OAuth URL validation failed:", urlError);
+    throw new Error(`Invalid OAuth URL format: ${urlError instanceof Error ? urlError.message : "Unknown error"}`);
+  }
   
   // Store code_verifier server-side using KV (keyed by state)
   // This ensures security - verifier never exposed to client
