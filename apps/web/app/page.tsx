@@ -469,6 +469,7 @@ export default function HomePage() {
                 {/* Show preview image if available */}
                 {generated.preview && (
                   <div className="mb-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img 
                       src={generated.preview} 
                       alt="Generated NFT" 
@@ -490,11 +491,14 @@ export default function HomePage() {
                         </p>
                       </div>
                     ) : (
-                      <img 
-                        src={generated.imageUrl.replace("ipfs://", "https://ipfs.io/ipfs/")} 
-                        alt="Generated NFT" 
-                        className="w-full rounded-lg border-2 border-white/20" 
-                      />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={generated.imageUrl.replace("ipfs://", "https://ipfs.io/ipfs/")} 
+                          alt="Generated NFT" 
+                          className="w-full rounded-lg border-2 border-white/20" 
+                        />
+                      </>
                     )}
                   </div>
                 )}
