@@ -30,14 +30,14 @@ export async function GET(request: NextRequest) {
   
   // X OAuth 2.0 scopes for API v2
   // users.read: Read user profile information (required for /users/me endpoint)
-  // offline.access: Request refresh token (optional, for long-lived tokens)
-  // Note: Space-separated format is correct for X OAuth 2.0
-  const scope = "users.read offline.access";
+  // offline.access is optional, start with just users.read to avoid 400 errors
+  const scope = "users.read";
   const state = Math.random().toString(36).substring(7);
   
-  // X OAuth 2.0 authorization URL (without PKCE for simplicity)
-  // Note: X OAuth 2.0 supports both with and without PKCE
-  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`;
+  // X OAuth 2.0 authorization URL format
+  // Correct endpoint: https://twitter.com/i/oauth2/authorize
+  // Parameters must be properly encoded
+  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
   
   // Log for debugging (always log in production too for troubleshooting)
   console.log("🔍 X OAuth Authorization URL Generated:", {
