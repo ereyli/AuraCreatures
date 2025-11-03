@@ -111,35 +111,39 @@ const supabaseKvClient = {
 
   incr: async (key: string) => {
     try {
-      // Clean up expired keys first
-      await db.execute(sql`
-        DELETE FROM kv_store 
-        WHERE expires_at IS NOT NULL AND expires_at < NOW()
-      `);
-
-      // Get current value or default to 0
-      const result = await db.execute(sql`
-        SELECT value FROM kv_store 
+      // Supabase KV incr - for rate limiting
+      // If this fails, rate limiting will fall back to fail-open (allow request)
+      await supabaseKvClient._cleanupExpired();
+      
+      // First try to update existing value
+      const updateResult = await db.execute(sql`
+        UPDATE kv_store 
+        SET value = (CAST(value AS INTEGER) + 1)::TEXT, created_at = NOW()
         WHERE key = ${key}
-        AND (expires_at IS NULL OR expires_at > NOW())
+        RETURNING value
       `);
-
-      const current = result.rows && result.rows.length > 0 
-        ? parseInt(result.rows[0].value as string) || 0 
-        : 0;
-      const next = current + 1;
-
-      await db.execute(sql`
+      
+      const updatedRows = updateResult.rows as any[];
+      if (updatedRows && updatedRows.length > 0) {
+        return parseInt(updatedRows[0]?.value || "0");
+      }
+      
+      // If no existing value, insert new
+      const insertResult = await db.execute(sql`
         INSERT INTO kv_store (key, value, expires_at)
-        VALUES (${key}, ${next.toString()}, NULL)
-        ON CONFLICT (key) 
-        DO UPDATE SET value = ${next.toString()}
+        VALUES (${key}, '1', NULL)
+        RETURNING value
       `);
-
-      return next;
-    } catch (error) {
-      console.error("Supabase KV incr error:", error);
-      throw error;
+      
+      const insertedRows = insertResult.rows as any[];
+      return parseInt(insertedRows[0]?.value || "0");
+    } catch (error: any) {
+      console.error("Supabase KV incr error:", {
+        error: error?.message || "Unknown error",
+        code: error?.code,
+        note: "Rate limiting will fall back to allowing requests"
+      });
+      throw error; // Let rate-limit.ts handle fail-open
     }
   },
 
