@@ -392,7 +392,7 @@ function HomePageContent() {
                 <p>
                   🎨 Our AI will analyze your unique wallet signature and create a one-of-a-kind creature
                   just for you. Each trait—color, expression, outfit, and more—is determined by your
-                  wallet's unique identity.
+                  wallet&apos;s unique identity.
                 </p>
                 <p>
                   ✨ Once created, your creature becomes a permanent NFT on Base, a testament to your
