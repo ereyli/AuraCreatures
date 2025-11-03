@@ -4,7 +4,7 @@ import { signMintAuth } from "@/lib/eip712";
 import { checkMintRateLimit } from "@/lib/rate-limit";
 import { db, tokens } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
-import { env } from "@/env.mjs";
+import { env, isMockMode } from "@/env.mjs";
 import { ethers } from "ethers";
 import type { MintPermitRequest, MintAuth } from "@/lib/types";
 
@@ -41,9 +41,6 @@ export async function POST(request: NextRequest) {
     if (!allowed) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
-    
-    // In mock mode, skip x402 payment verification
-    const isMockMode = env.DATABASE_URL === "mock://localhost" || process.env.NODE_ENV === "development";
     
     // Check X-PAYMENT header (only in production)
     const paymentHeader = request.headers.get("X-PAYMENT");
