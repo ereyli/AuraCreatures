@@ -144,6 +144,26 @@ export async function GET(request: NextRequest) {
   
   try {
     console.log("✅ Authorization code received, exchanging for token...");
+    console.log("🔍 Debug info:", {
+      hasCode: !!code,
+      codeLength: code?.length || 0,
+      hasState: !!state,
+      hasCodeVerifier: !!codeVerifier,
+      hasClientId: !!env.X_CLIENT_ID,
+      hasClientSecret: !!env.X_CLIENT_SECRET,
+      callbackUrl: env.X_CALLBACK_URL,
+      actualUrl: request.url,
+    });
+    
+    // Check if X OAuth credentials are configured
+    if (!env.X_CLIENT_ID || !env.X_CLIENT_SECRET || !env.X_CALLBACK_URL) {
+      console.error("❌ X OAuth not configured:", {
+        hasClientId: !!env.X_CLIENT_ID,
+        hasClientSecret: !!env.X_CLIENT_SECRET,
+        hasCallbackUrl: !!env.X_CALLBACK_URL,
+      });
+      return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("X OAuth not configured. Vercel environment variables'ı kontrol edin.")}`, request.url));
+    }
     
     // Use exact values from env (trim whitespace)
     // Pass code_verifier for PKCE (X OAuth 2.0 requires it)
@@ -157,7 +177,8 @@ export async function GET(request: NextRequest) {
     
     if (!tokenResponse) {
       console.error("❌ Failed to exchange token - exchangeCodeForToken returned null");
-      return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("Failed to exchange token. Client ID ve Secret'ı kontrol edin.")}`, request.url));
+      console.error("💡 Check Vercel logs for detailed error message");
+      return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("Failed to exchange token. Vercel logs'u kontrol edin veya X Developer Portal ayarlarını kontrol edin.")}`, request.url));
     }
     
     console.log("✅ Token received, verifying user...");
