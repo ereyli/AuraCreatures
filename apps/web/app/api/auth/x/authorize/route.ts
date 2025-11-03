@@ -64,20 +64,7 @@ export async function GET(request: NextRequest) {
   const scope = "users.read";
   const state = Math.random().toString(36).substring(7);
   
-  // Store code_verifier server-side using KV (keyed by state)
-  // This ensures security - verifier never exposed to client
-  try {
-    const kv = await import("@/lib/kv");
-    const stateKey = `x_oauth_verifier:${state}`;
-    await kv.kv.setex(stateKey, 600, verifier); // Store for 10 minutes
-    console.log("✅ PKCE verifier stored server-side for state:", state.substring(0, 5) + "...");
-  } catch (error) {
-    console.error("⚠️ Failed to store PKCE verifier:", error);
-    // Fallback: return verifier to client (less secure but functional)
-    console.log("⚠️ Falling back to client-side verifier storage");
-  }
-  
-  // Build authorization URL with PKCE
+  // Build authorization URL with PKCE (needed in both KV and cookie fallback modes)
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
@@ -89,6 +76,54 @@ export async function GET(request: NextRequest) {
   });
   
   const authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  
+  // Store code_verifier server-side using KV (keyed by state)
+  // This ensures security - verifier never exposed to client
+  let verifierStored = false;
+  try {
+    const kv = await import("@/lib/kv");
+    const stateKey = `x_oauth_verifier:${state}`;
+    await kv.kv.setex(stateKey, 600, verifier); // Store for 10 minutes
+    console.log("✅ PKCE verifier stored in KV for state:", state.substring(0, 5) + "...");
+    verifierStored = true;
+  } catch (error) {
+    console.error("⚠️ Failed to store PKCE verifier in KV:", error);
+    console.log("⚠️ KV not available - will use encrypted cookie as fallback");
+  }
+  
+  // Fallback: If KV is not available, use encrypted HTTP-only cookie
+  // This works in serverless environments but is less ideal than KV
+  if (!verifierStored) {
+    // Encrypt verifier with state as additional security
+    const crypto = require("crypto");
+    const secretKey = env.X_CLIENT_SECRET?.substring(0, 32) || "fallback_secret_key_12345678"; // Use first 32 chars as encryption key
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(secretKey.padEnd(32, "0")), iv);
+    let encrypted = cipher.update(verifier, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    const encryptedVerifier = iv.toString("hex") + ":" + encrypted;
+    
+    // Store encrypted verifier in HTTP-only cookie (keyed by state)
+    const cookieValue = `${state}:${encryptedVerifier}`;
+    console.log("✅ PKCE verifier encrypted and stored in cookie (fallback mode)");
+    
+    // Return response with Set-Cookie header
+    const response = NextResponse.json({ 
+      authUrl,
+      state,
+    });
+    
+    // Set HTTP-only, secure cookie with 10 minute expiration
+    response.cookies.set(`x_oauth_verifier_${state}`, cookieValue, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: 600, // 10 minutes
+      path: "/",
+    });
+    
+    return response;
+  }
   
   console.log("🔗 X OAuth URL with PKCE:", {
     clientIdLength: clientId.length,

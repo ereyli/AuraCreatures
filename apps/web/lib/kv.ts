@@ -43,18 +43,33 @@ const mockKvClient = {
 // Real KV client
 let realKv: ReturnType<typeof createClient> | null = null;
 
-if (!isMockMode && env.KV_REST_API_URL && !env.KV_REST_API_URL.includes("localhost")) {
+// Initialize KV client if credentials are available
+// Works in both development and production
+if (env.KV_REST_API_URL && env.KV_REST_API_TOKEN && !env.KV_REST_API_URL.includes("localhost")) {
   try {
     realKv = createClient({
       url: env.KV_REST_API_URL,
-      token: env.KV_REST_API_TOKEN || "",
+      token: env.KV_REST_API_TOKEN,
     });
+    console.log("✅ Vercel KV connected successfully");
   } catch (error) {
-    console.warn("Failed to connect to KV, using mock mode:", error);
+    console.warn("⚠️ Failed to connect to KV:", error);
+    console.warn("⚠️ Will use fallback: cookie-based storage for PKCE");
+  }
+} else {
+  if (!env.KV_REST_API_URL || !env.KV_REST_API_TOKEN) {
+    console.log("ℹ️ KV credentials not set - using fallback: cookie-based storage");
   }
 }
 
-export const kv = (isMockMode || !realKv ? mockKvClient : realKv) as any;
+// Use real KV if available
+// Priority: realKv > mockKvClient
+// realKv is available when KV_REST_API_URL and KV_REST_API_TOKEN are set
+// mockKvClient is used in development or when KV is not available
+export const kv = (realKv ? realKv : mockKvClient) as any;
+
+// Export KV status for debugging
+export const isKvAvailable = !!realKv;
 
 export async function rateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
   const count = await kv.incr(key);

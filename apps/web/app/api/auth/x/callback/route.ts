@@ -14,13 +14,41 @@ export async function GET(request: NextRequest) {
   let codeVerifier: string | null = null;
   if (state) {
     try {
+      // First try KV storage
       const stateKey = `x_oauth_verifier:${state}`;
       const stored = await kv.get(stateKey);
       if (stored) {
         codeVerifier = stored as string;
         // Clean up stored verifier after use
         await kv.del(stateKey);
-        console.log("✅ PKCE verifier retrieved from server storage");
+        console.log("✅ PKCE verifier retrieved from KV");
+      } else {
+        // Fallback: Try encrypted cookie (used when KV is not available)
+        const cookieName = `x_oauth_verifier_${state}`;
+        const cookieValue = request.cookies.get(cookieName)?.value;
+        
+        if (cookieValue) {
+          // Parse encrypted verifier from cookie
+          const [cookieState, encryptedVerifier] = cookieValue.split(":");
+          
+          if (cookieState === state && encryptedVerifier) {
+            // Decrypt verifier
+            const crypto = require("crypto");
+            const secretKey = env.X_CLIENT_SECRET?.substring(0, 32) || "fallback_secret_key_12345678";
+            const [ivHex, encrypted] = encryptedVerifier.split(":");
+            
+            if (ivHex && encrypted) {
+              const iv = Buffer.from(ivHex, "hex");
+              const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(secretKey.padEnd(32, "0")), iv);
+              let decrypted = decipher.update(encrypted, "hex", "utf8");
+              decrypted += decipher.final("utf8");
+              codeVerifier = decrypted;
+              
+              console.log("✅ PKCE verifier retrieved from encrypted cookie (fallback mode)");
+              // Cookie will be cleaned up in the final redirect response
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("⚠️ Failed to retrieve PKCE verifier:", error);
@@ -151,7 +179,15 @@ export async function GET(request: NextRequest) {
       redirectUrl.searchParams.set("bio", xUser.bio);
     }
     
-    return NextResponse.redirect(redirectUrl);
+    const response = NextResponse.redirect(redirectUrl);
+    
+    // Clean up cookie if it was used (fallback mode)
+    if (state) {
+      const cookieName = `x_oauth_verifier_${state}`;
+      response.cookies.delete(cookieName);
+    }
+    
+    return response;
   } catch (error) {
     console.error("Callback error:", error);
     return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("Authentication failed")}`, request.url));
