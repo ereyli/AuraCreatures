@@ -7,7 +7,6 @@ import { env } from "@/env.mjs";
 import { ethers } from "ethers";
 import type { MintPermitRequest, MintAuth } from "@/lib/types";
 import { supabase, isSupabaseAvailable } from "@/lib/supabase";
-import { handleX402Payment, verifyX402PaymentHeader } from "@/lib/x402-handler";
 
 // Contract ABI for querying nonce
 const CONTRACT_ABI = [
@@ -44,46 +43,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
     
-    // Handle x402 payment verification
-    const receivingWallet = env.X402_RECEIVER_WALLET || "0x0000000000000000000000000000000000000000";
-    const paymentResponse = await handleX402Payment(request, receivingWallet);
-    
-    // If payment is required (402), return the response
-    if (paymentResponse) {
-      return paymentResponse;
-    }
-    
-    // Payment verified - get payment info from header
+    // x402 payment verification is handled by middleware
+    // If we reach here, payment has been verified by x402-next middleware
+    // Get payment info from X-PAYMENT header (set by middleware after verification)
     const paymentHeader = request.headers.get("X-PAYMENT");
     let paymentVerification: any = null;
     
     if (paymentHeader) {
-      // Verify payment (automatically uses CDP facilitator if API keys are set)
-      const verification = await verifyX402PaymentHeader(paymentHeader);
-      
-      if (verification) {
-        paymentVerification = verification;
-        console.log("✅ Payment verified:", paymentVerification);
-      } else {
+      try {
+        const paymentData = JSON.parse(paymentHeader);
+        paymentVerification = {
+          payer: paymentData.payer || wallet,
+          amount: paymentData.amount || env.X402_PRICE_USDC,
+          asset: paymentData.asset || "USDC",
+          network: paymentData.network || "base",
+          recipient: paymentData.recipient || env.X402_RECEIVER_WALLET || wallet,
+        };
+        console.log("✅ Payment verified by x402 middleware:", paymentVerification);
+      } catch (error) {
+        console.warn("Failed to parse payment header, using wallet as payer:", error);
         // Fallback for development
-        console.warn("⚠️ Payment verification failed, using wallet as payer (development mode)");
         paymentVerification = {
           payer: wallet,
           amount: env.X402_PRICE_USDC,
           asset: "USDC",
           network: "base",
-          recipient: receivingWallet,
+          recipient: env.X402_RECEIVER_WALLET || wallet,
         };
       }
     } else {
-      // This shouldn't happen if handleX402Payment worked correctly
-      console.warn("⚠️ No payment header after verification");
+      // This shouldn't happen if middleware is working correctly
+      // But for development/testing, allow it
+      console.warn("⚠️ No X-PAYMENT header found - allowing request (development mode)");
       paymentVerification = {
         payer: wallet,
         amount: env.X402_PRICE_USDC,
         asset: "USDC",
         network: "base",
-        recipient: receivingWallet,
+        recipient: env.X402_RECEIVER_WALLET || wallet,
       };
     }
     
