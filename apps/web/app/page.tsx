@@ -141,12 +141,20 @@ function HomePageContent() {
       
       // Redirect to X OAuth
       console.log("🔗 X OAuth Authorization URL:", authUrl);
-      console.log("🔍 URL Breakdown:", {
-        base: "https://twitter.com/i/oauth2/authorize",
-        clientId: clientId?.substring(0, 15) + "...",
-        redirectUri: redirectUri,
-        scope: "users.read offline.access",
-      });
+      
+      // Parse URL to show breakdown
+      try {
+        const urlObj = new URL(authUrl);
+        const params = new URLSearchParams(urlObj.search);
+        console.log("🔍 URL Breakdown:", {
+          base: urlObj.origin + urlObj.pathname,
+          clientId: params.get("client_id")?.substring(0, 15) + "..." || "N/A",
+          redirectUri: decodeURIComponent(params.get("redirect_uri") || ""),
+          scope: decodeURIComponent(params.get("scope") || ""),
+        });
+      } catch (e) {
+        console.log("🔍 URL Breakdown: Could not parse URL");
+      }
       
       // Open in same window (required for OAuth flow)
       window.location.href = authUrl;
