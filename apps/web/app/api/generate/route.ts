@@ -8,6 +8,7 @@ import { db, tokens } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { env } from "@/env.mjs";
 import type { GenerateRequest, GenerateResponse } from "@/lib/types";
+import { supabase, isSupabaseAvailable } from "@/lib/supabase";
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,40 +56,73 @@ export async function POST(request: NextRequest) {
       // CRITICAL: Check if wallet already has an NFT generated
       // This prevents duplicate generation and saves costs
       try {
-        const existingToken = await db
-          .select()
-          .from(tokens)
-          .where(eq(tokens.x_user_id, walletLower))
-          .limit(1);
-        
-        if (existingToken.length > 0 && existingToken[0].image_uri) {
-          console.log(`✅ Found existing NFT for wallet: ${walletLower}`);
+        // Try Supabase first (preferred), fallback to Drizzle
+        if (isSupabaseAvailable() && supabase) {
+          const { data: existingToken, error: supabaseError } = await supabase
+            .from("tokens")
+            .select("*")
+            .eq("x_user_id", walletLower)
+            .limit(1)
+            .single();
           
-          // Return existing NFT without generating a new one
-          // This saves money on AI image generation
-          const existing = existingToken[0];
-          
-          // Fetch image from IPFS for preview (if needed)
-          let previewDataUrl = "";
-          try {
-            if (existing.image_uri && !existing.image_uri.startsWith("ipfs://mock_")) {
-              const imageUrl = existing.image_uri.replace("ipfs://", "https://ipfs.io/ipfs/");
-              // For preview, we'll use the IPFS URL directly
-              // Client can handle it, or we could fetch and convert to base64
-              previewDataUrl = imageUrl;
-            }
-          } catch (previewError) {
-            console.warn("Failed to prepare preview for existing NFT:", previewError);
+          if (supabaseError && supabaseError.code !== "PGRST116") {
+            // PGRST116 = no rows returned (expected if no token exists)
+            console.warn("Supabase query error:", supabaseError);
           }
           
-          return NextResponse.json({
-            seed: existing.seed,
-            traits: existing.traits as any,
-            imageUrl: existing.image_uri,
-            metadataUrl: existing.metadata_uri,
-            preview: previewDataUrl,
-            existing: true, // Flag to indicate this is an existing NFT
-          });
+          if (existingToken && existingToken.image_uri) {
+            console.log(`✅ Found existing NFT for wallet: ${walletLower} (via Supabase)`);
+            
+            let previewDataUrl = "";
+            try {
+              if (existingToken.image_uri && !existingToken.image_uri.startsWith("ipfs://mock_")) {
+                const imageUrl = existingToken.image_uri.replace("ipfs://", "https://ipfs.io/ipfs/");
+                previewDataUrl = imageUrl;
+              }
+            } catch (previewError) {
+              console.warn("Failed to prepare preview for existing NFT:", previewError);
+            }
+            
+            return NextResponse.json({
+              seed: existingToken.seed,
+              traits: existingToken.traits as any,
+              imageUrl: existingToken.image_uri,
+              metadataUrl: existingToken.metadata_uri,
+              preview: previewDataUrl,
+              existing: true,
+            });
+          }
+        } else {
+          // Fallback to Drizzle ORM
+          const existingToken = await db
+            .select()
+            .from(tokens)
+            .where(eq(tokens.x_user_id, walletLower))
+            .limit(1);
+          
+          if (existingToken.length > 0 && existingToken[0].image_uri) {
+            console.log(`✅ Found existing NFT for wallet: ${walletLower} (via Drizzle)`);
+            
+            const existing = existingToken[0];
+            let previewDataUrl = "";
+            try {
+              if (existing.image_uri && !existing.image_uri.startsWith("ipfs://mock_")) {
+                const imageUrl = existing.image_uri.replace("ipfs://", "https://ipfs.io/ipfs/");
+                previewDataUrl = imageUrl;
+              }
+            } catch (previewError) {
+              console.warn("Failed to prepare preview for existing NFT:", previewError);
+            }
+            
+            return NextResponse.json({
+              seed: existing.seed,
+              traits: existing.traits as any,
+              imageUrl: existing.image_uri,
+              metadataUrl: existing.metadata_uri,
+              preview: previewDataUrl,
+              existing: true,
+            });
+          }
         }
       } catch (dbCheckError) {
         console.warn("Database check failed, proceeding with generation:", dbCheckError);
@@ -152,28 +186,65 @@ export async function POST(request: NextRequest) {
       
       // Save to database - CRITICAL for preventing duplicate generation
       try {
-        // Check again before insert (race condition protection)
-        const existingCheck = await db
-          .select()
-          .from(tokens)
-          .where(eq(tokens.x_user_id, walletLower))
-          .limit(1);
-        
-        if (existingCheck.length === 0) {
-          // Token doesn't exist, save generation data
-          console.log(`💾 Saving new NFT generation for wallet: ${walletLower}`);
-          await db.insert(tokens).values({
-            x_user_id: walletLower, // Store wallet address in x_user_id field
-            token_id: 0, // Will be updated after mint
-            seed,
-            token_uri: metadataUrl,
-            metadata_uri: metadataUrl,
-            image_uri: imageUrl,
-            traits: traits as any,
-          });
-          console.log(`✅ NFT saved to database for wallet: ${walletLower}`);
+        // Use Supabase if available (preferred), fallback to Drizzle
+        if (isSupabaseAvailable() && supabase) {
+          // Check again before insert (race condition protection)
+          const { data: existingCheck } = await supabase
+            .from("tokens")
+            .select("id")
+            .eq("x_user_id", walletLower)
+            .limit(1)
+            .maybeSingle();
+          
+          if (!existingCheck) {
+            // Token doesn't exist, save generation data
+            console.log(`💾 Saving new NFT generation for wallet: ${walletLower} (via Supabase)`);
+            const { data: insertedToken, error: insertError } = await supabase
+              .from("tokens")
+              .insert({
+                x_user_id: walletLower,
+                token_id: 0,
+                seed,
+                token_uri: metadataUrl,
+                metadata_uri: metadataUrl,
+                image_uri: imageUrl,
+                traits: traits as any,
+              })
+              .select()
+              .single();
+            
+            if (insertError) {
+              console.error("❌ Supabase insert error:", insertError);
+              throw insertError;
+            }
+            
+            console.log(`✅ NFT saved to Supabase for wallet: ${walletLower}`, insertedToken?.id);
+          } else {
+            console.warn(`⚠️ NFT already exists for wallet ${walletLower}, but we generated anyway. This should not happen.`);
+          }
         } else {
-          console.warn(`⚠️ NFT already exists for wallet ${walletLower}, but we generated anyway. This should not happen.`);
+          // Fallback to Drizzle ORM
+          const existingCheck = await db
+            .select()
+            .from(tokens)
+            .where(eq(tokens.x_user_id, walletLower))
+            .limit(1);
+          
+          if (existingCheck.length === 0) {
+            console.log(`💾 Saving new NFT generation for wallet: ${walletLower} (via Drizzle)`);
+            await db.insert(tokens).values({
+              x_user_id: walletLower,
+              token_id: 0,
+              seed,
+              token_uri: metadataUrl,
+              metadata_uri: metadataUrl,
+              image_uri: imageUrl,
+              traits: traits as any,
+            });
+            console.log(`✅ NFT saved to database for wallet: ${walletLower}`);
+          } else {
+            console.warn(`⚠️ NFT already exists for wallet ${walletLower}, but we generated anyway. This should not happen.`);
+          }
         }
       } catch (dbError) {
         // Database save failed - this is critical for preventing duplicates

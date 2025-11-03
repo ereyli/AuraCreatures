@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { env, isMockMode } from "@/env.mjs";
 import { ethers } from "ethers";
 import type { MintPermitRequest, MintAuth } from "@/lib/types";
+import { supabase, isSupabaseAvailable } from "@/lib/supabase";
 
 // Contract ABI for querying nonce
 const CONTRACT_ABI = [
@@ -106,19 +107,44 @@ export async function POST(request: NextRequest) {
       
       // Get token URI from database (from generate step)
       console.log(`Looking for token with wallet: ${walletLower}`);
-      const tokenData = await db
-        .select()
-        .from(tokens)
-        .where(eq(tokens.x_user_id, walletLower))
-        .limit(1);
+      let tokenURI: string;
       
-      console.log(`Found ${tokenData.length} tokens for wallet: ${walletLower}`);
-      
-      if (!tokenData || tokenData.length === 0) {
-        return NextResponse.json({ error: "Token not generated. Please generate first." }, { status: 400 });
+      // Use Supabase if available (preferred), fallback to Drizzle
+      if (isSupabaseAvailable() && supabase) {
+        const { data: tokenData, error: supabaseError } = await supabase
+          .from("tokens")
+          .select("token_uri")
+          .eq("x_user_id", walletLower)
+          .limit(1)
+          .maybeSingle();
+        
+        if (supabaseError) {
+          console.error("Supabase query error:", supabaseError);
+          return NextResponse.json({ error: "Failed to query token data" }, { status: 500 });
+        }
+        
+        if (!tokenData) {
+          return NextResponse.json({ error: "Token not generated. Please generate first." }, { status: 400 });
+        }
+        
+        tokenURI = tokenData.token_uri;
+        console.log(`Found token for wallet: ${walletLower} (via Supabase)`);
+      } else {
+        // Fallback to Drizzle ORM
+        const tokenData = await db
+          .select()
+          .from(tokens)
+          .where(eq(tokens.x_user_id, walletLower))
+          .limit(1);
+        
+        console.log(`Found ${tokenData.length} tokens for wallet: ${walletLower} (via Drizzle)`);
+        
+        if (!tokenData || tokenData.length === 0) {
+          return NextResponse.json({ error: "Token not generated. Please generate first." }, { status: 400 });
+        }
+        
+        tokenURI = tokenData[0].token_uri;
       }
-      
-      const tokenURI = tokenData[0].token_uri;
       const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
     
       const auth: MintAuth = {

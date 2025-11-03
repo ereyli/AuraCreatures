@@ -15,6 +15,9 @@ const envSchema = z.object({
   WEB3_STORAGE_TOKEN: z.string().optional(),
   INFERENCE_API_KEY: z.string().optional(),
   DATABASE_URL: z.string().url().optional().or(z.literal("mock://localhost")),
+  // Supabase (preferred over DATABASE_URL)
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
   // Vercel KV (optional - Supabase KV is preferred)
   KV_REST_API_URL: z.string().url().optional().or(z.literal("http://localhost:6379")),
   KV_REST_API_TOKEN: z.string().optional(),
@@ -30,6 +33,8 @@ const envSchema = z.object({
   PINATA_JWT: data.PINATA_JWT === "" ? undefined : data.PINATA_JWT,
   WEB3_STORAGE_TOKEN: data.WEB3_STORAGE_TOKEN === "" ? undefined : data.WEB3_STORAGE_TOKEN,
   INFERENCE_API_KEY: data.INFERENCE_API_KEY === "" ? undefined : data.INFERENCE_API_KEY,
+  SUPABASE_URL: data.SUPABASE_URL === "" ? undefined : data.SUPABASE_URL,
+  SUPABASE_ANON_KEY: data.SUPABASE_ANON_KEY === "" ? undefined : data.SUPABASE_ANON_KEY,
 }));
 
 // Development için default değerler ekle
