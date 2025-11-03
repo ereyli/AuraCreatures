@@ -33,6 +33,7 @@ const envSchema = z.object({
 }));
 
 // Development için default değerler ekle
+// NOTE: In production, all environment variables must be explicitly set
 const envDefaults = isDevelopment ? {
   RPC_URL: "https://sepolia.base.org",
   CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000000",
@@ -54,4 +55,5 @@ const envRaw = {
 export const env = envSchema.parse(envRaw);
 
 // Mock mode kontrolü
-export const isMockMode = env.DATABASE_URL === "mock://localhost" || isDevelopment;
+// Only use mock mode in development OR if DATABASE_URL is explicitly set to mock
+export const isMockMode = env.DATABASE_URL === "mock://localhost" || (isDevelopment && !env.DATABASE_URL);
