@@ -143,22 +143,35 @@ export async function GET(request: NextRequest) {
     });
     
     // Set HTTP-only, secure cookie with 10 minute expiration
-    // IMPORTANT: Domain must match for cookie to work in Vercel
-    // secure: true requires HTTPS (Vercel uses HTTPS)
-    // sameSite: "lax" allows cross-site navigation
-    response.cookies.set(`x_oauth_verifier_${state}`, cookieValue, {
+    // IMPORTANT: Cookie settings for Vercel deployment
+    // - secure: true (required for HTTPS)
+    // - sameSite: "lax" (allows OAuth redirects from x.com)
+    // - path: "/" (available site-wide)
+    // - maxAge: 600 (10 minutes - enough for OAuth flow)
+    // - Do NOT set domain (let browser use current domain)
+    const cookieName = `x_oauth_verifier_${state}`;
+    response.cookies.set(cookieName, cookieValue, {
       httpOnly: true,
       secure: true, // Required for HTTPS (Vercel)
-      sameSite: "lax", // Allows OAuth redirects
+      sameSite: "lax", // Allows OAuth redirects from x.com
       maxAge: 600, // 10 minutes
       path: "/",
       // Don't set domain - let browser use current domain (Vercel)
     });
     
     console.log("✅ Cookie set for PKCE fallback:", {
-      cookieName: `x_oauth_verifier_${state}`,
+      cookieName,
       cookieValueLength: cookieValue.length,
       stateLength: state.length,
+      statePreview: state.substring(0, 5) + "...",
+      cookieSettings: {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        maxAge: 600,
+        path: "/",
+      },
+      note: "Cookie will be available for OAuth callback",
     });
     
     return response;

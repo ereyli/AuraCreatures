@@ -40,12 +40,24 @@ export async function GET(request: NextRequest) {
       // Fallback: Try encrypted cookie (used when KV is not available or connection fails)
       if (!codeVerifier) {
         const cookieName = `x_oauth_verifier_${state}`;
-        const cookieValue = request.cookies.get(cookieName)?.value;
+        const cookie = request.cookies.get(cookieName);
+        const cookieValue = cookie?.value;
+        
+        // Debug: List all cookies to help troubleshoot
+        const allCookies = request.cookies.getAll();
+        const verifierCookies = allCookies.filter(c => c.name.startsWith("x_oauth_verifier_"));
         
         console.log("🔍 Checking for PKCE cookie:", {
           cookieName,
-          hasCookie: !!cookieValue,
+          hasCookie: !!cookie,
+          cookieValue: cookieValue ? `${cookieValue.substring(0, 20)}...` : null,
           cookieLength: cookieValue?.length || 0,
+          allCookiesCount: allCookies.length,
+          verifierCookiesFound: verifierCookies.length,
+          verifierCookieNames: verifierCookies.map(c => c.name),
+          note: cookieValue 
+            ? "Cookie found - will decrypt" 
+            : "Cookie not found - may be expired, wrong domain/path, or never set",
         });
         
         if (cookieValue) {
