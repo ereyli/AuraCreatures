@@ -113,7 +113,11 @@ const supabaseKvClient = {
     try {
       // Supabase KV incr - for rate limiting
       // If this fails, rate limiting will fall back to fail-open (allow request)
-      await supabaseKvClient._cleanupExpired();
+      // Clean up expired keys first
+      await db.execute(sql`
+        DELETE FROM kv_store 
+        WHERE expires_at IS NOT NULL AND expires_at < NOW()
+      `);
       
       // First try to update existing value
       const updateResult = await db.execute(sql`
