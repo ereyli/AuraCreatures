@@ -58,12 +58,12 @@ export async function exchangeCodeForToken(
   redirectUri: string,
   codeVerifier?: string // PKCE code_verifier
 ): Promise<{ access_token: string; token_type: string } | null> {
+  // Trim whitespace (declare outside try block for catch block access)
+  const cleanClientId = clientId?.trim() || "";
+  const cleanClientSecret = clientSecret?.trim() || "";
+  const cleanRedirectUri = redirectUri?.trim() || "";
+  
   try {
-    // Trim whitespace
-    const cleanClientId = clientId.trim();
-    const cleanClientSecret = clientSecret.trim();
-    const cleanRedirectUri = redirectUri.trim();
-    
     const auth = Buffer.from(`${cleanClientId}:${cleanClientSecret}`).toString("base64");
     
     console.log("🔄 Exchanging code for token:", {
