@@ -156,17 +156,19 @@ const supabaseKvClient = {
 
   del: async (key: string) => {
     try {
-      await db.execute(sql`
-        DELETE FROM kv_store WHERE key = ${key}
-      `);
-      // Check if key existed by trying to get it (simpler than rowCount)
-      const check = await db.execute(sql`
+      // Check if key exists before deletion
+      const existsResult = await db.execute(sql`
         SELECT 1 FROM kv_store WHERE key = ${key}
       `);
-      // If we just deleted it, it won't exist now, so return 1
-      // Actually, we can't reliably know if it existed before deletion
-      // So we'll just return 1 (optimistic)
-      return 1;
+      const existed = existsResult.rows && existsResult.rows.length > 0;
+      
+      if (existed) {
+        await db.execute(sql`
+          DELETE FROM kv_store WHERE key = ${key}
+        `);
+        return 1;
+      }
+      return 0;
     } catch (error) {
       console.error("Supabase KV del error:", error);
       return 0;
