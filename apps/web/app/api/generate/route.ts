@@ -93,36 +93,44 @@ export async function POST(request: NextRequest) {
       // Pin metadata to IPFS
       const metadataUrl = await pinJSONToIPFS(metadata);
       
-      // Save to database
-      const existingToken = await db
-        .select()
-        .from(tokens)
-        .where(eq(tokens.x_user_id, x_user_id))
-        .limit(1);
-      
-      console.log(`Checking for existing token with x_user_id: ${x_user_id}`, existingToken.length);
-      
-      if (existingToken.length === 0) {
-        // Token not minted yet, save generation data
-        console.log(`Inserting token for x_user_id: ${x_user_id}`);
-        const insertResult = await db.insert(tokens).values({
-          x_user_id,
-          token_id: 0, // Will be updated after mint
-          seed,
-          token_uri: metadataUrl,
-          metadata_uri: metadataUrl,
-          image_uri: imageUrl,
-          traits: traits as any,
-        });
-        console.log("Insert result:", insertResult);
-        
-        // Verify insert worked
-        const verifyToken = await db
+      // Save to database (OPTIONAL - for tracking/preventing duplicates)
+      // If database is unavailable, we still return the generated image
+      try {
+        const existingToken = await db
           .select()
           .from(tokens)
           .where(eq(tokens.x_user_id, x_user_id))
           .limit(1);
-        console.log(`Verification: ${verifyToken.length} tokens found after insert`);
+        
+        console.log(`Checking for existing token with x_user_id: ${x_user_id}`, existingToken.length);
+        
+        if (existingToken.length === 0) {
+          // Token not minted yet, save generation data
+          console.log(`Inserting token for x_user_id: ${x_user_id}`);
+          const insertResult = await db.insert(tokens).values({
+            x_user_id,
+            token_id: 0, // Will be updated after mint
+            seed,
+            token_uri: metadataUrl,
+            metadata_uri: metadataUrl,
+            image_uri: imageUrl,
+            traits: traits as any,
+          });
+          console.log("Insert result:", insertResult);
+          
+          // Verify insert worked
+          const verifyToken = await db
+            .select()
+            .from(tokens)
+            .where(eq(tokens.x_user_id, x_user_id))
+            .limit(1);
+          console.log(`Verification: ${verifyToken.length} tokens found after insert`);
+        }
+      } catch (dbError) {
+        // Database save failed - this is non-critical
+        // Image is already generated and pinned to IPFS
+        console.warn("⚠️ Failed to save token to database (non-critical):", dbError);
+        console.warn("💡 Image generation succeeded - database save is optional");
       }
       
       const response: GenerateResponse = {
