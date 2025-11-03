@@ -99,23 +99,12 @@ export async function GET(request: NextRequest) {
   try {
     console.log("✅ Authorization code received, exchanging for token...");
     
-    // Normalize redirect URI to match authorization URL exactly
-    let normalizedCallbackUrl = env.X_CALLBACK_URL;
-    if (normalizedCallbackUrl && normalizedCallbackUrl.endsWith("/") && normalizedCallbackUrl !== "https://" && normalizedCallbackUrl !== "http://") {
-      normalizedCallbackUrl = normalizedCallbackUrl.slice(0, -1);
-    }
-    
-    console.log("🔍 Token exchange using callback URL:", {
-      original: env.X_CALLBACK_URL,
-      normalized: normalizedCallbackUrl,
-      match: env.X_CALLBACK_URL === normalizedCallbackUrl ? "same" : "normalized",
-    });
-    
+    // Use exact values from env (trim whitespace)
     const tokenResponse = await exchangeCodeForToken(
       code,
       env.X_CLIENT_ID,
       env.X_CLIENT_SECRET,
-      normalizedCallbackUrl // Use normalized URL
+      env.X_CALLBACK_URL
     );
     
     if (!tokenResponse) {

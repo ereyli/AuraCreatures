@@ -15,80 +15,31 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
 
-  // Generate OAuth authorization URL
-  const clientId = env.X_CLIENT_ID;
-  const redirectUri = env.X_CALLBACK_URL;
+  // Simple, direct OAuth URL generation - no normalization, use exact values
+  const clientId = env.X_CLIENT_ID.trim(); // Remove any whitespace
+  const redirectUri = env.X_CALLBACK_URL.trim(); // Remove any whitespace
   
-  // Validate callback URL format
-  if (!redirectUri.startsWith("http://") && !redirectUri.startsWith("https://")) {
+  // Basic validation
+  if (!redirectUri.startsWith("https://")) {
     return NextResponse.json({ 
-      error: "Invalid callback URL format",
-      callbackUrl: redirectUri,
-      expectedFormat: "https://your-domain.com/api/auth/x/callback"
+      error: "Callback URL must use https://",
+      callbackUrl: redirectUri
     }, { status: 500 });
   }
   
-  // X OAuth 2.0 scopes for API v2
-  // users.read: Read user profile information (required for /users/me endpoint)
+  // X OAuth 2.0 - minimal required parameters
   const scope = "users.read";
   const state = Math.random().toString(36).substring(7);
   
-  // Validate and normalize redirect URI
-  let normalizedRedirectUri = redirectUri;
+  // Build URL - use exact redirect_uri from env (must match X Portal exactly)
+  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
   
-  // Remove trailing slash if present
-  if (normalizedRedirectUri.endsWith("/") && normalizedRedirectUri !== "https://" && normalizedRedirectUri !== "http://") {
-    normalizedRedirectUri = normalizedRedirectUri.slice(0, -1);
-  }
-  
-  // Ensure https:// protocol
-  if (!normalizedRedirectUri.startsWith("https://")) {
-    console.warn("⚠️ Redirect URI should use https:// protocol");
-  }
-  
-  // X OAuth 2.0 authorization URL format
-  // Correct endpoint: https://twitter.com/i/oauth2/authorize (NOT /api/2/oauth2/authorize)
-  // ALL parameters must be properly URL-encoded
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: clientId,
-    redirect_uri: normalizedRedirectUri,
-    scope: scope,
-    state: state,
-  });
-  
-  const authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
-  
-  // Verify URL encoding
-  console.log("🔍 Authorization URL Components:", {
-    endpoint: "https://twitter.com/i/oauth2/authorize",
-    clientId: clientId.substring(0, 15) + "...",
-    redirectUri: normalizedRedirectUri,
-    redirectUriEncoded: encodeURIComponent(normalizedRedirectUri),
-    scope,
-    state,
-    fullUrl: authUrl.substring(0, 150) + "...",
-  });
-  
-  // Log for debugging (always log in production too for troubleshooting)
-  console.log("🔍 X OAuth Authorization URL Generated:", {
-    clientId: clientId.substring(0, 10) + "...",
+  console.log("🔗 X OAuth URL:", {
+    clientIdLength: clientId.length,
     redirectUri,
-    callbackPath: new URL(redirectUri).pathname,
-    scope,
-    authUrlLength: authUrl.length,
-    note: "Make sure redirectUri matches EXACTLY in X Developer Portal",
+    urlLength: authUrl.length
   });
   
-  return NextResponse.json({ 
-    authUrl,
-    redirectUri: normalizedRedirectUri, // Return normalized URI for verification
-    debug: process.env.NODE_ENV === "development" ? {
-      redirectUri: normalizedRedirectUri,
-      originalRedirectUri: redirectUri !== normalizedRedirectUri ? redirectUri : "same",
-      callbackPath: new URL(normalizedRedirectUri).pathname,
-      note: "Make sure this callback URI matches EXACTLY in X Developer Portal",
-    } : undefined,
-  });
+  return NextResponse.json({ authUrl });
 }
 

@@ -58,20 +58,16 @@ export async function exchangeCodeForToken(
   redirectUri: string
 ): Promise<{ access_token: string; token_type: string } | null> {
   try {
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    // Trim whitespace
+    const cleanClientId = clientId.trim();
+    const cleanClientSecret = clientSecret.trim();
+    const cleanRedirectUri = redirectUri.trim();
     
-    // Normalize redirect URI to match authorization URL exactly
-    let normalizedRedirectUri = redirectUri;
-    if (normalizedRedirectUri.endsWith("/") && normalizedRedirectUri !== "https://" && normalizedRedirectUri !== "http://") {
-      normalizedRedirectUri = normalizedRedirectUri.slice(0, -1);
-    }
+    const auth = Buffer.from(`${cleanClientId}:${cleanClientSecret}`).toString("base64");
     
-    console.log("🔄 Exchanging authorization code for token:", {
+    console.log("🔄 Exchanging code for token:", {
       codeLength: code.length,
-      clientId: clientId.substring(0, 10) + "...",
-      redirectUri: normalizedRedirectUri,
-      originalRedirectUri: redirectUri !== normalizedRedirectUri ? redirectUri : "same",
-      note: "redirect_uri MUST match exactly with authorization URL",
+      redirectUri: cleanRedirectUri
     });
     
     const response = await axios.post(
@@ -79,10 +75,8 @@ export async function exchangeCodeForToken(
       new URLSearchParams({
         code,
         grant_type: "authorization_code",
-        client_id: clientId,
-        redirect_uri: normalizedRedirectUri, // Use normalized URI to match authorization
-        // PKCE: X OAuth 2.0 for Web Apps with Client Secret doesn't require PKCE
-        // Only required for Native Apps (public clients) without Client Secret
+        client_id: cleanClientId,
+        redirect_uri: cleanRedirectUri, // Must match exactly with authorize URL
       }),
       {
         headers: {
