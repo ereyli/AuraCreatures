@@ -11,8 +11,7 @@ const envSchema = z.object({
   X_CLIENT_ID: z.string().optional(),
   X_CLIENT_SECRET: z.string().optional(),
   X_CALLBACK_URL: z.string().url().optional().or(z.literal("http://localhost:3000/api/auth/x/callback")),
-  PINATA_JWT: z.string().optional(),
-  WEB3_STORAGE_TOKEN: z.string().optional(),
+  PINATA_JWT: z.string().optional(), // Required for production - Pinata IPFS storage
   INFERENCE_API_KEY: z.string().optional(),
   DATABASE_URL: z.string().url().optional().or(z.literal("mock://localhost")),
   // Supabase (preferred over DATABASE_URL)

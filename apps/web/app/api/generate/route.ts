@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateSeed, seedToTraits } from "@/lib/traits";
+import { generateSeed, seedToTraits, generateNFTName } from "@/lib/traits";
 import { generateImage } from "@/lib/ai";
 import { pinToIPFS, pinJSONToIPFS } from "@/lib/ipfs";
 import { checkGenerateRateLimit } from "@/lib/rate-limit";
@@ -73,11 +73,13 @@ export async function POST(request: NextRequest) {
           if (existingToken && existingToken.image_uri) {
             console.log(`✅ Found existing NFT for wallet: ${walletLower} (via Supabase)`);
             
+            // Convert Pinata IPFS URL to HTTP URL for preview
             let previewDataUrl = "";
             try {
-              if (existingToken.image_uri && !existingToken.image_uri.startsWith("ipfs://mock_")) {
-                const imageUrl = existingToken.image_uri.replace("ipfs://", "https://ipfs.io/ipfs/");
-                previewDataUrl = imageUrl;
+              if (existingToken.image_uri && existingToken.image_uri.startsWith("ipfs://")) {
+                // Use Pinata gateway for better performance
+                const ipfsHash = existingToken.image_uri.replace("ipfs://", "");
+                previewDataUrl = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
               }
             } catch (previewError) {
               console.warn("Failed to prepare preview for existing NFT:", previewError);
@@ -86,9 +88,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
               seed: existingToken.seed,
               traits: existingToken.traits as any,
-              imageUrl: existingToken.image_uri,
-              metadataUrl: existingToken.metadata_uri,
-              preview: previewDataUrl,
+              imageUrl: existingToken.image_uri, // Pinata IPFS URL
+              metadataUrl: existingToken.metadata_uri, // Pinata IPFS URL
+              preview: previewDataUrl, // Pinata gateway URL for preview
               existing: true,
             });
           }
@@ -104,11 +106,13 @@ export async function POST(request: NextRequest) {
             console.log(`✅ Found existing NFT for wallet: ${walletLower} (via Drizzle)`);
             
             const existing = existingToken[0];
+            // Convert Pinata IPFS URL to HTTP URL for preview
             let previewDataUrl = "";
             try {
-              if (existing.image_uri && !existing.image_uri.startsWith("ipfs://mock_")) {
-                const imageUrl = existing.image_uri.replace("ipfs://", "https://ipfs.io/ipfs/");
-                previewDataUrl = imageUrl;
+              if (existing.image_uri && existing.image_uri.startsWith("ipfs://")) {
+                // Use Pinata gateway for better performance
+                const ipfsHash = existing.image_uri.replace("ipfs://", "");
+                previewDataUrl = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
               }
             } catch (previewError) {
               console.warn("Failed to prepare preview for existing NFT:", previewError);
@@ -117,9 +121,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
               seed: existing.seed,
               traits: existing.traits as any,
-              imageUrl: existing.image_uri,
-              metadataUrl: existing.metadata_uri,
-              preview: previewDataUrl,
+              imageUrl: existing.image_uri, // Pinata IPFS URL
+              metadataUrl: existing.metadata_uri, // Pinata IPFS URL
+              preview: previewDataUrl, // Pinata gateway URL for preview
               existing: true,
             });
           }
@@ -164,24 +168,31 @@ export async function POST(request: NextRequest) {
       const imageBase64 = imageBuffer.toString("base64");
       const previewDataUrl = `data:image/png;base64,${imageBase64}`;
       
-      // Pin image to IPFS
+      // Generate unique NFT name
+      const nftName = generateNFTName(walletAddress, traits);
+      
+      // Pin image to Pinata IPFS (required)
+      console.log(`📤 Uploading image to Pinata for wallet: ${walletLower}`);
       const imageUrl = await pinToIPFS(imageBuffer, `${walletAddress.toLowerCase()}.png`);
       
-      // Create metadata
+      // Create metadata with NFT name and only 4 traits
       const metadata = {
-        name: `Aura Creature #${walletAddress.substring(0, 8)}`,
-        description: `AI-generated Aura Creature NFT for wallet ${walletAddress}`,
-        image: imageUrl,
-        attributes: Object.entries(traits).map(([trait_type, value]) => ({
-          trait_type,
-          value,
-        })),
+        name: nftName,
+        description: `Unique AI-generated Aura Creature NFT. Each NFT is one-of-a-kind and permanently stored on IPFS.`,
+        image: imageUrl, // Pinata IPFS URL
+        attributes: [
+          { trait_type: "Color", value: traits.color },
+          { trait_type: "Eyes", value: traits.eyes },
+          { trait_type: "Mouth", value: traits.mouth },
+          { trait_type: "Background", value: traits.bg },
+        ],
         seed,
         theme: env.COLLECTION_THEME,
         version: env.MODEL_VERSION,
       };
       
-      // Pin metadata to IPFS
+      // Pin metadata to Pinata IPFS (required)
+      console.log(`📤 Uploading metadata to Pinata for wallet: ${walletLower}`);
       const metadataUrl = await pinJSONToIPFS(metadata);
       
       // Save to database - CRITICAL for preventing duplicate generation

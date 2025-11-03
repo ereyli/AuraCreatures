@@ -12,13 +12,8 @@ export interface MintAuth {
 export interface Traits {
   color: string;
   eyes: string;
-  ears: string;
   mouth: string;
-  outfit: string;
-  hand: string;
   bg: string;
-  emotionTheme?: string; // Optional: overall vibe from bio
-  hair?: string; // Optional: hair style / head detail
 }
 
 export interface GenerateRequest {

@@ -519,7 +519,7 @@ function HomePageContent() {
                   <div className="mb-6">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={generated.imageUrl.replace("ipfs://", "https://ipfs.io/ipfs/")}
+                      src={generated.imageUrl.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/")}
                       alt="Generated NFT"
                       className="w-full rounded-xl border-2 border-white/30 shadow-2xl"
                     />
