@@ -19,10 +19,10 @@ const CONTRACT_ABI = [
 export async function POST(request: NextRequest) {
   try {
     const body: MintPermitRequest = await request.json();
-    const { wallet, x_user_id } = body;
+    const { wallet } = body;
     
-    if (!wallet || !x_user_id) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!wallet) {
+      return NextResponse.json({ error: "Missing wallet address" }, { status: 400 });
     }
     
     // Validate wallet address
@@ -30,11 +30,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid wallet address" }, { status: 400 });
     }
     
-    // Convert x_user_id to uint256 (hash the string to get a unique uint256)
-    // This ensures we can use any string format (X user ID, test ID, etc.)
-    const hash = ethers.id(x_user_id); // keccak256 hash (returns 0x prefix)
-    const xUserIdBigInt = BigInt(hash); // Convert to BigInt for uint256
-    console.log(`Converting x_user_id "${x_user_id}" to uint256: ${hash}`);
+    // Convert wallet address to uint256 (hash the address to get a unique uint256)
+    // Use lowercase wallet address for consistency
+    const walletLower = wallet.toLowerCase();
+    const hash = ethers.id(walletLower); // keccak256 hash (returns 0x prefix)
+    const walletAddressBigInt = BigInt(hash); // Convert to BigInt for uint256
+    console.log(`Converting wallet "${walletLower}" to uint256: ${hash}`);
     
     // Rate limiting
     const allowed = await checkMintRateLimit(wallet);
@@ -88,9 +89,9 @@ export async function POST(request: NextRequest) {
     const contract = new ethers.Contract(env.CONTRACT_ADDRESS, CONTRACT_ABI, provider);
     
     try {
-      const alreadyMinted = await contract.usedXUserId(xUserIdBigInt);
+      const alreadyMinted = await contract.usedXUserId(walletAddressBigInt);
       if (alreadyMinted) {
-        return NextResponse.json({ error: "X user already minted" }, { status: 400 });
+        return NextResponse.json({ error: "Wallet already minted" }, { status: 400 });
       }
       
       // Check supply
@@ -104,14 +105,14 @@ export async function POST(request: NextRequest) {
       const nonce = await contract.getNonce(wallet);
       
       // Get token URI from database (from generate step)
-      console.log(`Looking for token with x_user_id: ${x_user_id}`);
+      console.log(`Looking for token with wallet: ${walletLower}`);
       const tokenData = await db
         .select()
         .from(tokens)
-        .where(eq(tokens.x_user_id, x_user_id))
+        .where(eq(tokens.x_user_id, walletLower))
         .limit(1);
       
-      console.log(`Found ${tokenData.length} tokens for x_user_id: ${x_user_id}`);
+      console.log(`Found ${tokenData.length} tokens for wallet: ${walletLower}`);
       
       if (!tokenData || tokenData.length === 0) {
         return NextResponse.json({ error: "Token not generated. Please generate first." }, { status: 400 });
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
       const auth: MintAuth = {
         to: wallet,
         payer: paymentVerification.payer,
-        xUserId: hash, // Use hash string (will be converted to BigInt by ethers)
+        walletAddress: walletLower, // Use wallet address
         tokenURI,
         nonce: Number(nonce),
         deadline,

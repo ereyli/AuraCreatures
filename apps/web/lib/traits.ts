@@ -9,9 +9,9 @@ const outfits = ["T-Shirt", "Hoodie", "Sweater", "Jacket", "Formal Shirt", "Coat
 const hands = ["None", "Wand", "Book", "Crystal", "Flower", "Coin", "Gem", "Star"];
 const backgrounds = ["Sky", "Forest", "Ocean", "Mountain", "City", "Desert", "Space", "Abstract"];
 
-export function generateSeed(xUserId: string, profileImageUrl: string): string {
+export function generateSeed(walletAddress: string): string {
   const hash = createHash("sha256")
-    .update(`${xUserId}:${profileImageUrl}`)
+    .update(walletAddress.toLowerCase())
     .digest("hex");
   return hash.substring(0, 16);
 }

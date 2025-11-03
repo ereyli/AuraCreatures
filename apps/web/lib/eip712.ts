@@ -39,10 +39,24 @@ export async function signMintAuth(auth: MintAuth): Promise<string> {
   
   const signer = new ethers.Wallet(env.SERVER_SIGNER_PRIVATE_KEY);
   
+  // Convert walletAddress to uint256 (hash) for contract compatibility
+  const walletHash = ethers.id(auth.walletAddress);
+  const walletHashBigInt = BigInt(walletHash);
+  
+  // Create auth object with xUserId (uint256) for EIP712 signing
+  const authForSigning = {
+    to: auth.to,
+    payer: auth.payer,
+    xUserId: walletHashBigInt.toString(), // Convert to string for signing
+    tokenURI: auth.tokenURI,
+    nonce: auth.nonce,
+    deadline: auth.deadline,
+  };
+  
   const signature = await signer.signTypedData(
     EIP712_DOMAIN,
     { MintAuth: EIP712_TYPES.MintAuth },
-    auth
+    authForSigning
   );
   
   return signature;

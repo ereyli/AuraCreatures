@@ -3,7 +3,7 @@
 export interface MintAuth {
   to: string;
   payer: string;
-  xUserId: string;
+  walletAddress: string; // Changed from xUserId to walletAddress
   tokenURI: string;
   nonce: number;
   deadline: number;
@@ -21,18 +21,8 @@ export interface Traits {
   hair?: string; // Optional: hair style / head detail
 }
 
-export interface XUser {
-  x_user_id: string;
-  username: string;
-  profile_image_url: string;
-  bio?: string; // Profile bio/description
-}
-
 export interface GenerateRequest {
-  x_user_id: string;
-  profile_image_url: string;
-  username?: string; // Optional: username for better AI analysis
-  bio?: string; // Optional: profile bio for better AI analysis
+  walletAddress: string; // Wallet address instead of x_user_id
 }
 
 export interface GenerateResponse {
@@ -45,7 +35,6 @@ export interface GenerateResponse {
 
 export interface MintPermitRequest {
   wallet: string;
-  x_user_id: string;
 }
 
 export interface MintPermitResponse {

@@ -12,17 +12,22 @@ import type { GenerateRequest, GenerateResponse } from "@/lib/types";
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { x_user_id, profile_image_url } = body;
+    const { walletAddress } = body;
     
-    if (!x_user_id || !profile_image_url) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!walletAddress) {
+      return NextResponse.json({ error: "Missing wallet address" }, { status: 400 });
+    }
+    
+    // Validate wallet address format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      return NextResponse.json({ error: "Invalid wallet address format" }, { status: 400 });
     }
     
     // Rate limiting (OPTIONAL - fail-open if KV unavailable)
     // Purpose: Prevent abuse (too many requests per hour)
     // Note: If KV/database is unavailable, we allow the request to proceed
     try {
-      const allowed = await checkGenerateRateLimit(x_user_id);
+      const allowed = await checkGenerateRateLimit(walletAddress);
       if (!allowed) {
         return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       }
@@ -32,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Acquire lock to prevent duplicate generation (fail-open if KV unavailable)
-    const lockKey = `generate:${x_user_id}`;
+    const lockKey = `generate:${walletAddress.toLowerCase()}`;
     let lockAcquired = false;
     try {
       lockAcquired = await acquireLock(lockKey);
@@ -45,8 +50,8 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      // Use deterministic traits (vision analysis disabled due to SDK issues)
-      const seed = generateSeed(x_user_id, profile_image_url);
+      // Generate deterministic traits from wallet address
+      const seed = generateSeed(walletAddress);
       const traits = seedToTraits(seed);
       
       // Generate AI image using deterministic traits
@@ -81,12 +86,12 @@ export async function POST(request: NextRequest) {
       const previewDataUrl = `data:image/png;base64,${imageBase64}`;
       
       // Pin image to IPFS
-      const imageUrl = await pinToIPFS(imageBuffer, `${x_user_id}.png`);
+      const imageUrl = await pinToIPFS(imageBuffer, `${walletAddress.toLowerCase()}.png`);
       
       // Create metadata
       const metadata = {
-        name: `X Animal NFT #${x_user_id}`,
-        description: `AI-generated NFT for X user ${x_user_id}`,
+        name: `Aura Creature #${walletAddress.substring(0, 8)}`,
+        description: `AI-generated Aura Creature NFT for wallet ${walletAddress}`,
         image: imageUrl,
         attributes: Object.entries(traits).map(([trait_type, value]) => ({
           trait_type,
@@ -103,19 +108,21 @@ export async function POST(request: NextRequest) {
       // Save to database (OPTIONAL - for tracking/preventing duplicates)
       // If database is unavailable, we still return the generated image
       try {
+        // Use wallet address as identifier (convert to lowercase for consistency)
+        const walletLower = walletAddress.toLowerCase();
         const existingToken = await db
           .select()
           .from(tokens)
-          .where(eq(tokens.x_user_id, x_user_id))
+          .where(eq(tokens.x_user_id, walletLower)) // Using x_user_id field to store wallet address
           .limit(1);
         
-        console.log(`Checking for existing token with x_user_id: ${x_user_id}`, existingToken.length);
+        console.log(`Checking for existing token with wallet: ${walletLower}`, existingToken.length);
         
         if (existingToken.length === 0) {
           // Token not minted yet, save generation data
-          console.log(`Inserting token for x_user_id: ${x_user_id}`);
+          console.log(`Inserting token for wallet: ${walletLower}`);
           const insertResult = await db.insert(tokens).values({
-            x_user_id,
+            x_user_id: walletLower, // Store wallet address in x_user_id field for now
             token_id: 0, // Will be updated after mint
             seed,
             token_uri: metadataUrl,
@@ -129,7 +136,7 @@ export async function POST(request: NextRequest) {
           const verifyToken = await db
             .select()
             .from(tokens)
-            .where(eq(tokens.x_user_id, x_user_id))
+            .where(eq(tokens.x_user_id, walletLower))
             .limit(1);
           console.log(`Verification: ${verifyToken.length} tokens found after insert`);
         }
