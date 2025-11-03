@@ -56,31 +56,72 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Generate test authorization URL with detailed breakdown
+  let testAuthorizationUrl = "Cannot generate - missing configuration";
+  let urlComponents: any = null;
+  
+  if (checks.clientId.exists && checks.callbackUrl.exists) {
+    // Normalize callback URL
+    let normalizedCallback = env.X_CALLBACK_URL!;
+    if (normalizedCallback.endsWith("/") && normalizedCallback !== "https://" && normalizedCallback !== "http://") {
+      normalizedCallback = normalizedCallback.slice(0, -1);
+    }
+    
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: env.X_CLIENT_ID!,
+      redirect_uri: normalizedCallback,
+      scope: "users.read",
+      state: "test_check",
+    });
+    
+    testAuthorizationUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+    
+    urlComponents = {
+      endpoint: "https://twitter.com/i/oauth2/authorize",
+      clientId: env.X_CLIENT_ID!,
+      clientIdLength: env.X_CLIENT_ID!.length,
+      redirectUri: normalizedCallback,
+      redirectUriEncoded: encodeURIComponent(normalizedCallback),
+      scope: "users.read",
+      fullUrl: testAuthorizationUrl.substring(0, 200) + "...",
+    };
+  }
+
   return NextResponse.json({
     status: issues.length === 0 ? "✅ Configuration looks good" : "⚠️ Configuration issues found",
     checks,
     issues,
+    criticalChecks: {
+      clientIdValid: checks.clientId.exists && checks.clientId.length > 20,
+      callbackUrlValid: checks.callbackUrl.exists && 
+                        checks.callbackUrl.value.startsWith("https://") && 
+                        !checks.callbackUrl.value.endsWith("/") &&
+                        checks.callbackUrl.path === "/api/auth/x/callback",
+    },
+    urlComponents,
+    testAuthorizationUrl,
     recommendations: [
-      "1. Verify X_CLIENT_ID matches X Developer Portal → Keys and tokens → OAuth 2.0 Client ID",
-      "2. Verify X_CLIENT_SECRET matches X Developer Portal → Keys and tokens → OAuth 2.0 Client Secret",
-      "3. Verify X_CALLBACK_URL matches EXACTLY in X Developer Portal → Settings → User authentication settings → Callback URI",
-      "4. Ensure Callback URI in X Portal: https://aura-creatures.vercel.app/api/auth/x/callback (no trailing slash)",
-      "5. Ensure App permissions: Read (in X Developer Portal)",
-      "6. Ensure Type of App: Web App, Automated App or Bot (in X Developer Portal)",
-      "7. After changes in X Portal, wait 1-2 minutes for propagation",
+      "1. X Developer Portal → Keys and tokens → OAuth 2.0 Client ID → TAM kopyala (genellikle 40+ karakter)",
+      "2. Vercel → Environment Variables → X_CLIENT_ID → Yapıştır (boşluk, yeni satır olmamalı)",
+      "3. X Developer Portal → Settings → User authentication settings → Callback URI kontrol:",
+      "   MUST BE EXACTLY: https://aura-creatures.vercel.app/api/auth/x/callback",
+      "   - https:// (http değil)",
+      "   - Sonunda / olmamalı",
+      "   - Büyük/küçük harf duyarlı",
+      "4. App permissions: Read (Read and write değil)",
+      "5. Type of App: Web App, Automated App or Bot (Native App değil)",
+      "6. OAuth 2.0 Settings → Enabled olmalı",
+      "7. App durumu: Active olmalı (suspended/pending değil)",
+      "8. Değişikliklerden sonra: Save → 2-3 dakika bekle → Redeploy",
     ],
-    testAuthorizationUrl: checks.clientId.exists && checks.callbackUrl.exists
-      ? (() => {
-          const params = new URLSearchParams({
-            response_type: "code",
-            client_id: env.X_CLIENT_ID!,
-            redirect_uri: env.X_CALLBACK_URL!,
-            scope: "users.read",
-            state: "test_check",
-          });
-          return `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
-        })()
-      : "Cannot generate - missing configuration",
+    troubleshooting: {
+      step1: "Browser console'u aç (F12) ve 'Connect X Account' butonuna tıkla",
+      step2: "Authorization URL'deki client_id parametresini kontrol et",
+      step3: "X Developer Portal → Keys and tokens → Client ID ile karşılaştır",
+      step4: "Eğer eşleşmiyorsa → Vercel environment variable'ı güncelle",
+      step5: "X Portal → Analytics → User authentication → Error logs'u kontrol et",
+    },
   });
 }
 
