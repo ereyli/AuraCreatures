@@ -13,8 +13,6 @@ function HomePageContent() {
   const [wallet, setWallet] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [testMode, setTestMode] = useState(false);
-  const [testProfileImageUrl, setTestProfileImageUrl] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Handle OAuth callback
@@ -220,17 +218,13 @@ function HomePageContent() {
   };
 
   const generateNFT = async () => {
-    // Use test mode if enabled, otherwise use xUser
-    const userId = testMode ? `test_${Date.now()}` : xUser?.x_user_id;
-    const profileImageUrl = testMode ? testProfileImageUrl : xUser?.profile_image_url;
-    
-    if (!userId || !profileImageUrl) {
-      setError(testMode ? "Please enter a profile image URL" : "X account not connected");
+    if (!xUser) {
+      setError("X account not connected");
       return;
     }
     
     // Save userId for mint step
-    setCurrentUserId(userId);
+    setCurrentUserId(xUser.x_user_id);
     
     try {
       setLoading(true);
@@ -240,10 +234,10 @@ function HomePageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          x_user_id: userId,
-          profile_image_url: profileImageUrl,
-          username: testMode ? undefined : xUser?.username,
-          bio: testMode ? undefined : xUser?.bio,
+          x_user_id: xUser.x_user_id,
+          profile_image_url: xUser.profile_image_url,
+          username: xUser.username,
+          bio: xUser.bio,
         }),
       });
       
@@ -466,42 +460,7 @@ function HomePageContent() {
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-8">
               <h2 className="text-2xl font-bold mb-4 text-center">Step 2: Generate</h2>
               
-              {/* Test Mode Toggle */}
-              <div className="mb-6 p-4 bg-blue-500/20 border border-blue-500/50 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-semibold">Test Mode (No X OAuth Required)</label>
-                  <button
-                    onClick={() => setTestMode(!testMode)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      testMode ? "bg-green-500" : "bg-gray-600"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        testMode ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-                
-                {testMode && (
-                  <div className="mt-3">
-                    <label className="block text-sm mb-2">X Profile Image URL:</label>
-                    <input
-                      type="text"
-                      value={testProfileImageUrl}
-                      onChange={(e) => setTestProfileImageUrl(e.target.value)}
-                      placeholder="https://pbs.twimg.com/profile_images/..."
-                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                    />
-                    <p className="text-xs text-gray-400 mt-2">
-                      Enter any X (Twitter) profile image URL to test AI generation
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              {!testMode && xUser && (
+              {xUser && (
                 <div className="mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg">
                   <p className="text-sm">
                     <strong>X Account:</strong> @{xUser.username}
@@ -514,7 +473,7 @@ function HomePageContent() {
               
               <button
                 onClick={generateNFT}
-                disabled={loading || (testMode && !testProfileImageUrl) || (!testMode && !xUser)}
+                disabled={loading || !xUser}
                 className="bg-green-500 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg w-full"
               >
                 {loading ? "Generating..." : "Generate NFT"}
