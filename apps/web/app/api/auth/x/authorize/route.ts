@@ -82,9 +82,11 @@ export async function GET(request: NextRequest) {
   
   return NextResponse.json({ 
     authUrl,
+    redirectUri: normalizedRedirectUri, // Return normalized URI for verification
     debug: process.env.NODE_ENV === "development" ? {
-      redirectUri,
-      callbackPath: new URL(redirectUri).pathname,
+      redirectUri: normalizedRedirectUri,
+      originalRedirectUri: redirectUri !== normalizedRedirectUri ? redirectUri : "same",
+      callbackPath: new URL(normalizedRedirectUri).pathname,
       note: "Make sure this callback URI matches EXACTLY in X Developer Portal",
     } : undefined,
   });

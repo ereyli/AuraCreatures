@@ -60,10 +60,18 @@ export async function exchangeCodeForToken(
   try {
     const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
     
+    // Normalize redirect URI to match authorization URL exactly
+    let normalizedRedirectUri = redirectUri;
+    if (normalizedRedirectUri.endsWith("/") && normalizedRedirectUri !== "https://" && normalizedRedirectUri !== "http://") {
+      normalizedRedirectUri = normalizedRedirectUri.slice(0, -1);
+    }
+    
     console.log("🔄 Exchanging authorization code for token:", {
       codeLength: code.length,
       clientId: clientId.substring(0, 10) + "...",
-      redirectUri,
+      redirectUri: normalizedRedirectUri,
+      originalRedirectUri: redirectUri !== normalizedRedirectUri ? redirectUri : "same",
+      note: "redirect_uri MUST match exactly with authorization URL",
     });
     
     const response = await axios.post(
@@ -72,8 +80,9 @@ export async function exchangeCodeForToken(
         code,
         grant_type: "authorization_code",
         client_id: clientId,
-        redirect_uri: redirectUri,
-        // PKCE not used - X OAuth 2.0 supports both methods
+        redirect_uri: normalizedRedirectUri, // Use normalized URI to match authorization
+        // PKCE: X OAuth 2.0 for Web Apps with Client Secret doesn't require PKCE
+        // Only required for Native Apps (public clients) without Client Secret
       }),
       {
         headers: {
