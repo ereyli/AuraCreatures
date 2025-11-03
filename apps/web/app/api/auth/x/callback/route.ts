@@ -276,11 +276,21 @@ export async function GET(request: NextRequest) {
     }
     
     console.log("✅ Token received, verifying user...");
+    console.log("🔍 Token details:", {
+      tokenType: tokenResponse.token_type,
+      accessTokenLength: tokenResponse.access_token?.length || 0,
+      accessTokenPreview: tokenResponse.access_token?.substring(0, 20) + "...",
+    });
+    
     const xUser = await verifyXToken(tokenResponse.access_token);
     
     if (!xUser) {
       console.error("❌ Failed to verify user - verifyXToken returned null");
-      return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("Failed to verify user")}`, request.url));
+      console.error("💡 This usually means:");
+      console.error("   - X Developer Portal → User authentication settings → App permissions must be 'Read' or 'Read and Write'");
+      console.error("   - The OAuth app may need to be reviewed/approved by X");
+      console.error("   - The access token doesn't have the required scopes");
+      return NextResponse.redirect(new URL(`/?error=${encodeURIComponent("X hesabınız doğrulanamadı. X Developer Portal ayarlarını kontrol edin - App permissions 'Read' olmalı.")}`, request.url));
     }
     
     console.log("✅ User verified:", { username: xUser.username, x_user_id: xUser.x_user_id });

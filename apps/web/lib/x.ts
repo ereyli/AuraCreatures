@@ -8,6 +8,7 @@ export async function verifyXToken(accessToken: string): Promise<XUser | null> {
     const response = await axios.get(`${X_API_BASE}/users/me`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        "User-Agent": "AuraCreatures/1.0",
       },
       params: {
         "user.fields": "profile_image_url,description",
@@ -21,8 +22,30 @@ export async function verifyXToken(accessToken: string): Promise<XUser | null> {
       profile_image_url: user.profile_image_url || "",
       bio: user.description || "",
     };
-  } catch (error) {
-    console.error("X API error:", error);
+  } catch (error: any) {
+    const errorDetails = {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      url: `${X_API_BASE}/users/me`,
+    };
+    
+    console.error("❌ X API error:", JSON.stringify(errorDetails, null, 2));
+    
+    // Provide specific guidance for 403 errors
+    if (error.response?.status === 403) {
+      console.error("💡 403 Forbidden - Possible causes:");
+      console.error("   1. X Developer Portal → User authentication settings → App permissions must be 'Read' or 'Read and Write'");
+      console.error("   2. The OAuth app may not have the required scopes enabled");
+      console.error("   3. The access token may not have the correct scopes");
+      console.error("   4. The app may need to be reviewed/approved by X");
+      console.error("💡 Check: X Developer Portal → Settings → User authentication settings");
+      if (error.response?.data) {
+        console.error("💡 X API Error Response:", JSON.stringify(error.response.data, null, 2));
+      }
+    }
+    
     return null;
   }
 }
@@ -97,6 +120,18 @@ export async function exchangeCodeForToken(
     );
     
     console.log("✅ Token exchange successful");
+    
+    // Log token response (without sensitive data)
+    const tokenData = response.data;
+    console.log("🔍 Token response:", {
+      tokenType: tokenData.token_type,
+      hasAccessToken: !!tokenData.access_token,
+      accessTokenLength: tokenData.access_token?.length || 0,
+      hasScope: !!tokenData.scope,
+      scope: tokenData.scope || "Not provided",
+      expiresIn: tokenData.expires_in || "Not provided",
+    });
+    
     return response.data;
   } catch (error: any) {
     const errorDetails = {
