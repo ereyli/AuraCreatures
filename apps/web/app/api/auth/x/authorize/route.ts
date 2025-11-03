@@ -9,9 +9,17 @@ import { createHash } from "crypto";
  */
 function generatePKCE() {
   // Generate random code verifier (43-128 characters)
-  // Server-side: use crypto.randomBytes
-  const randomBytes = require("crypto").randomBytes(32);
-  const verifier = randomBytes.toString("base64url"); // base64url removes padding
+  // Use crypto.randomBytes for secure random generation
+  const crypto = require("crypto");
+  const randomBytes = crypto.randomBytes(32);
+  
+  // Convert to base64url (URL-safe base64 without padding)
+  const base64 = randomBytes.toString("base64");
+  const verifier = base64
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '')
+    .substring(0, 128); // Ensure max 128 characters
   
   // Generate code challenge (SHA256 hash of verifier, base64url encoded)
   const challenge = createHash('sha256')
