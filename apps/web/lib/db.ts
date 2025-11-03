@@ -6,13 +6,9 @@ import { eq, and } from "drizzle-orm";
 
 // Mock database için in-memory storage
 const mockDb: {
-  users: any[];
   tokens: any[];
-  payments: any[];
 } = {
-  users: [],
   tokens: [],
-  payments: [],
 };
 
 // Helper function to evaluate where conditions
@@ -234,36 +230,16 @@ if (!isMockMode && env.DATABASE_URL && !env.DATABASE_URL.startsWith("mock://")) 
 export const db = isMockMode || !realDb ? (mockDbFunctions as any) : realDb!;
 
 // Schema definitions using Drizzle ORM
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  x_user_id: varchar("x_user_id", { length: 255 }).notNull().unique(),
-  username: varchar("username", { length: 255 }).notNull(),
-  profile_image_url: text("profile_image_url"),
-  wallet_address: varchar("wallet_address", { length: 255 }),
-  created_at: timestamp("created_at").defaultNow(),
-  updated_at: timestamp("updated_at").defaultNow(),
-});
-
+// Only tokens table is used - users and payments tables removed
 export const tokens = pgTable("tokens", {
   id: serial("id").primaryKey(),
   x_user_id: varchar("x_user_id", { length: 255 }).notNull(),
-  token_id: integer("token_id").notNull().unique(),
+  token_id: integer("token_id").notNull().default(0), // Default 0 for unminted, unique only when > 0
   seed: varchar("seed", { length: 64 }).notNull(),
   token_uri: text("token_uri").notNull(),
   metadata_uri: text("metadata_uri").notNull(),
   image_uri: text("image_uri").notNull(),
   traits: jsonb("traits").notNull(),
-  created_at: timestamp("created_at").defaultNow(),
-});
-
-export const payments = pgTable("payments", {
-  id: serial("id").primaryKey(),
-  x_user_id: varchar("x_user_id", { length: 255 }).notNull(),
-  wallet_address: varchar("wallet_address", { length: 255 }).notNull(),
-  amount: varchar("amount", { length: 100 }).notNull(),
-  transaction_hash: varchar("transaction_hash", { length: 255 }),
-  status: varchar("status", { length: 50 }).notNull(),
-  x402_payment_id: varchar("x402_payment_id", { length: 255 }),
   created_at: timestamp("created_at").defaultNow(),
 });
 
