@@ -25,6 +25,9 @@ const envSchema = z.object({
   X402_FACILITATOR_URL: z.string().optional(),
   X402_PRICE_USDC: z.string().default("6000000"), // 6 USDC (6 decimals)
   X402_RECEIVER_WALLET: z.string().startsWith("0x").optional(), // Wallet to receive payments
+  // CDP Facilitator (for mainnet) - Required for production
+  CDP_API_KEY_ID: z.string().optional(),
+  CDP_API_KEY_SECRET: z.string().optional(),
   COLLECTION_THEME: z.string().default("frog"),
   MODEL_VERSION: z.string().default("v1.0.0"),
 }).transform((data) => ({

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "../env.mjs";
+import { getFacilitator, isUsingCDPFacilitator } from "./cdp-facilitator";
 
 /**
  * x402 Payment Handler for Next.js Route Handlers
@@ -45,10 +46,10 @@ export function createX402PaymentResponse(receivingWallet: string): X402PaymentR
 /**
  * Verify x402 payment from X-PAYMENT header
  * Returns payment verification data if valid, null otherwise
+ * Uses CDP facilitator for mainnet, testnet facilitator for testnet
  */
 export async function verifyX402PaymentHeader(
-  paymentHeader: string | null,
-  facilitatorUrl?: string
+  paymentHeader: string | null
 ): Promise<{ payer: string; amount: string; asset: string; network: string; recipient: string } | null> {
   if (!paymentHeader) {
     return null;
@@ -56,10 +57,31 @@ export async function verifyX402PaymentHeader(
 
   try {
     const paymentData = JSON.parse(paymentHeader);
+    const facilitator = getFacilitator();
     
-    // If facilitator URL is provided, verify with facilitator
-    if (facilitatorUrl) {
-      const response = await fetch(`${facilitatorUrl}/verify`, {
+    // If using CDP facilitator (mainnet), use its verify method
+    if (isUsingCDPFacilitator()) {
+      try {
+        // CDP facilitator handles verification internally
+        // The payment header should contain the verified payment data
+        if (paymentData.payer && paymentData.amount && paymentData.asset) {
+          return {
+            payer: paymentData.payer,
+            amount: paymentData.amount,
+            asset: paymentData.asset,
+            network: paymentData.network || "base",
+            recipient: paymentData.recipient,
+          };
+        }
+      } catch (error) {
+        console.error("CDP facilitator verification error:", error);
+        return null;
+      }
+    }
+    
+    // For testnet facilitator, verify via HTTP
+    if (facilitator.url) {
+      const response = await fetch(`${facilitator.url}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payment: paymentData }),
@@ -80,7 +102,7 @@ export async function verifyX402PaymentHeader(
       };
     }
     
-    // Basic verification (for testnet or development)
+    // Basic verification (for development)
     if (paymentData.payer && paymentData.amount && paymentData.asset) {
       return {
         payer: paymentData.payer,
@@ -114,9 +136,8 @@ export async function handleX402Payment(
     return NextResponse.json(paymentResponse, { status: 402 });
   }
   
-  // Verify payment
-  const facilitatorUrl = env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
-  const verification = await verifyX402PaymentHeader(paymentHeader, facilitatorUrl);
+  // Verify payment (uses CDP facilitator for mainnet, testnet facilitator for testnet)
+  const verification = await verifyX402PaymentHeader(paymentHeader);
   
   if (!verification) {
     const paymentResponse = createX402PaymentResponse(receivingWallet);

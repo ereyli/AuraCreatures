@@ -58,8 +58,8 @@ export async function POST(request: NextRequest) {
     let paymentVerification: any = null;
     
     if (paymentHeader) {
-      const facilitatorUrl = env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
-      const verification = await verifyX402PaymentHeader(paymentHeader, facilitatorUrl);
+      // Verify payment (automatically uses CDP facilitator if API keys are set)
+      const verification = await verifyX402PaymentHeader(paymentHeader);
       
       if (verification) {
         paymentVerification = verification;
