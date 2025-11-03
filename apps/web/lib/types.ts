@@ -31,6 +31,7 @@ export interface GenerateResponse {
   imageUrl: string;
   metadataUrl: string;
   preview?: string; // Base64 encoded image for immediate preview
+  existing?: boolean; // Flag to indicate if this is an existing NFT (not newly generated)
 }
 
 export interface MintPermitRequest {

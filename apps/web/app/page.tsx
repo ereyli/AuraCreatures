@@ -196,6 +196,15 @@ function HomePageContent() {
       }
 
       const data: GenerateResponse = await response.json();
+      
+      // If this is an existing NFT, skip the generating animation
+      if (data.existing) {
+        setGenerationProgress(100);
+        setCurrentMessage(generationMessages[generationMessages.length - 1]);
+        // Show a brief message that we're loading existing NFT
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      
       setGenerated(data);
       setStep("generated");
     } catch (err) {

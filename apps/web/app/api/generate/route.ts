@@ -50,6 +50,51 @@ export async function POST(request: NextRequest) {
     }
     
     try {
+      const walletLower = walletAddress.toLowerCase();
+      
+      // CRITICAL: Check if wallet already has an NFT generated
+      // This prevents duplicate generation and saves costs
+      try {
+        const existingToken = await db
+          .select()
+          .from(tokens)
+          .where(eq(tokens.x_user_id, walletLower))
+          .limit(1);
+        
+        if (existingToken.length > 0 && existingToken[0].image_uri) {
+          console.log(`✅ Found existing NFT for wallet: ${walletLower}`);
+          
+          // Return existing NFT without generating a new one
+          // This saves money on AI image generation
+          const existing = existingToken[0];
+          
+          // Fetch image from IPFS for preview (if needed)
+          let previewDataUrl = "";
+          try {
+            if (existing.image_uri && !existing.image_uri.startsWith("ipfs://mock_")) {
+              const imageUrl = existing.image_uri.replace("ipfs://", "https://ipfs.io/ipfs/");
+              // For preview, we'll use the IPFS URL directly
+              // Client can handle it, or we could fetch and convert to base64
+              previewDataUrl = imageUrl;
+            }
+          } catch (previewError) {
+            console.warn("Failed to prepare preview for existing NFT:", previewError);
+          }
+          
+          return NextResponse.json({
+            seed: existing.seed,
+            traits: existing.traits as any,
+            imageUrl: existing.image_uri,
+            metadataUrl: existing.metadata_uri,
+            preview: previewDataUrl,
+            existing: true, // Flag to indicate this is an existing NFT
+          });
+        }
+      } catch (dbCheckError) {
+        console.warn("Database check failed, proceeding with generation:", dbCheckError);
+        // Continue with generation if database check fails
+      }
+      
       // Generate deterministic traits from wallet address
       const seed = generateSeed(walletAddress);
       const traits = seedToTraits(seed);
@@ -105,24 +150,20 @@ export async function POST(request: NextRequest) {
       // Pin metadata to IPFS
       const metadataUrl = await pinJSONToIPFS(metadata);
       
-      // Save to database (OPTIONAL - for tracking/preventing duplicates)
-      // If database is unavailable, we still return the generated image
+      // Save to database - CRITICAL for preventing duplicate generation
       try {
-        // Use wallet address as identifier (convert to lowercase for consistency)
-        const walletLower = walletAddress.toLowerCase();
-        const existingToken = await db
+        // Check again before insert (race condition protection)
+        const existingCheck = await db
           .select()
           .from(tokens)
-          .where(eq(tokens.x_user_id, walletLower)) // Using x_user_id field to store wallet address
+          .where(eq(tokens.x_user_id, walletLower))
           .limit(1);
         
-        console.log(`Checking for existing token with wallet: ${walletLower}`, existingToken.length);
-        
-        if (existingToken.length === 0) {
-          // Token not minted yet, save generation data
-          console.log(`Inserting token for wallet: ${walletLower}`);
-          const insertResult = await db.insert(tokens).values({
-            x_user_id: walletLower, // Store wallet address in x_user_id field for now
+        if (existingCheck.length === 0) {
+          // Token doesn't exist, save generation data
+          console.log(`💾 Saving new NFT generation for wallet: ${walletLower}`);
+          await db.insert(tokens).values({
+            x_user_id: walletLower, // Store wallet address in x_user_id field
             token_id: 0, // Will be updated after mint
             seed,
             token_uri: metadataUrl,
@@ -130,21 +171,15 @@ export async function POST(request: NextRequest) {
             image_uri: imageUrl,
             traits: traits as any,
           });
-          console.log("Insert result:", insertResult);
-          
-          // Verify insert worked
-          const verifyToken = await db
-            .select()
-            .from(tokens)
-            .where(eq(tokens.x_user_id, walletLower))
-            .limit(1);
-          console.log(`Verification: ${verifyToken.length} tokens found after insert`);
+          console.log(`✅ NFT saved to database for wallet: ${walletLower}`);
+        } else {
+          console.warn(`⚠️ NFT already exists for wallet ${walletLower}, but we generated anyway. This should not happen.`);
         }
       } catch (dbError) {
-        // Database save failed - this is non-critical
-        // Image is already generated and pinned to IPFS
-        console.warn("⚠️ Failed to save token to database (non-critical):", dbError);
-        console.warn("💡 Image generation succeeded - database save is optional");
+        // Database save failed - this is critical for preventing duplicates
+        console.error("❌ CRITICAL: Failed to save token to database:", dbError);
+        console.error("💡 This means the wallet could generate multiple NFTs, costing money!");
+        // Still return the image, but log the error
       }
       
       const response: GenerateResponse = {
