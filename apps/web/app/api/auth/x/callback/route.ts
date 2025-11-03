@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken, verifyXToken } from "@/lib/x";
 import { env } from "@/env.mjs";
+import { kv } from "@/lib/kv";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -8,6 +9,23 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get("state");
   const error = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
+  
+  // Retrieve PKCE code_verifier from server-side storage (keyed by state)
+  let codeVerifier: string | null = null;
+  if (state) {
+    try {
+      const stateKey = `x_oauth_verifier:${state}`;
+      const stored = await kv.get(stateKey);
+      if (stored) {
+        codeVerifier = stored as string;
+        // Clean up stored verifier after use
+        await kv.del(stateKey);
+        console.log("✅ PKCE verifier retrieved from server storage");
+      }
+    } catch (error) {
+      console.error("⚠️ Failed to retrieve PKCE verifier:", error);
+    }
+  }
   
   // Debug logging with detailed URL comparison
   const actualUrl = new URL(request.url);
@@ -100,11 +118,13 @@ export async function GET(request: NextRequest) {
     console.log("✅ Authorization code received, exchanging for token...");
     
     // Use exact values from env (trim whitespace)
+    // Pass code_verifier for PKCE (X OAuth 2.0 requires it)
     const tokenResponse = await exchangeCodeForToken(
       code,
       env.X_CLIENT_ID,
       env.X_CLIENT_SECRET,
-      env.X_CALLBACK_URL
+      env.X_CALLBACK_URL,
+      codeVerifier || undefined // PKCE code_verifier
     );
     
     if (!tokenResponse) {

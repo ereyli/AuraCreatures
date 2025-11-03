@@ -55,7 +55,8 @@ export async function exchangeCodeForToken(
   code: string,
   clientId: string,
   clientSecret: string,
-  redirectUri: string
+  redirectUri: string,
+  codeVerifier?: string // PKCE code_verifier
 ): Promise<{ access_token: string; token_type: string } | null> {
   try {
     // Trim whitespace
@@ -67,17 +68,26 @@ export async function exchangeCodeForToken(
     
     console.log("🔄 Exchanging code for token:", {
       codeLength: code.length,
-      redirectUri: cleanRedirectUri
+      redirectUri: cleanRedirectUri,
+      hasCodeVerifier: !!codeVerifier,
     });
+    
+    // Build token request parameters
+    const tokenParams: Record<string, string> = {
+      code,
+      grant_type: "authorization_code",
+      client_id: cleanClientId,
+      redirect_uri: cleanRedirectUri,
+    };
+    
+    // Add code_verifier if PKCE is used (X OAuth 2.0 requires it)
+    if (codeVerifier) {
+      tokenParams.code_verifier = codeVerifier;
+    }
     
     const response = await axios.post(
       "https://api.twitter.com/2/oauth2/token",
-      new URLSearchParams({
-        code,
-        grant_type: "authorization_code",
-        client_id: cleanClientId,
-        redirect_uri: cleanRedirectUri, // Must match exactly with authorize URL
-      }),
+      new URLSearchParams(tokenParams),
       {
         headers: {
           Authorization: `Basic ${auth}`,

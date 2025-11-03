@@ -128,35 +128,15 @@ function HomePageContent() {
       }
       
       const data = await response.json();
-      const { authUrl, debug } = data;
+      const { authUrl, codeVerifier } = data;
       
       if (!authUrl) {
         throw new Error("OAuth URL alınamadı");
       }
       
-      // Log debug info in development
-      if (debug && process.env.NODE_ENV === "development") {
-        console.log("🔍 X OAuth Debug:", debug);
-      }
-      
-      // Redirect to X OAuth
-      console.log("🔗 X OAuth Authorization URL:", authUrl);
-      
-      // Parse URL to show breakdown
-      try {
-        const urlObj = new URL(authUrl);
-        const params = new URLSearchParams(urlObj.search);
-        console.log("🔍 URL Breakdown:", {
-          base: urlObj.origin + urlObj.pathname,
-          clientId: params.get("client_id")?.substring(0, 15) + "..." || "N/A",
-          redirectUri: decodeURIComponent(params.get("redirect_uri") || ""),
-          scope: decodeURIComponent(params.get("scope") || ""),
-        });
-      } catch (e) {
-        console.log("🔍 URL Breakdown: Could not parse URL");
-      }
-      
-      // Open in same window (required for OAuth flow)
+      // PKCE verifier is stored server-side (keyed by state)
+      // No need to store in client
+      console.log("🔗 Redirecting to X OAuth:", authUrl.substring(0, 100) + "...");
       window.location.href = authUrl;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to connect X";

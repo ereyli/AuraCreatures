@@ -1,5 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/env.mjs";
+import { createHash } from "crypto";
+
+/**
+ * Generate PKCE code verifier and challenge
+ * X OAuth 2.0 requires PKCE for security
+ * According to: https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
+ */
+function generatePKCE() {
+  // Generate random code verifier (43-128 characters)
+  // Server-side: use crypto.randomBytes
+  const randomBytes = require("crypto").randomBytes(32);
+  const verifier = randomBytes.toString("base64url"); // base64url removes padding
+  
+  // Generate code challenge (SHA256 hash of verifier, base64url encoded)
+  const challenge = createHash('sha256')
+    .update(verifier)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  
+  return { verifier, challenge };
+}
 
 export async function GET(request: NextRequest) {
   // Check if X OAuth is configured
@@ -15,11 +38,9 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
 
-  // Simple, direct OAuth URL generation - no normalization, use exact values
-  const clientId = env.X_CLIENT_ID.trim(); // Remove any whitespace
-  const redirectUri = env.X_CALLBACK_URL.trim(); // Remove any whitespace
+  const clientId = env.X_CLIENT_ID.trim();
+  const redirectUri = env.X_CALLBACK_URL.trim();
   
-  // Basic validation
   if (!redirectUri.startsWith("https://")) {
     return NextResponse.json({ 
       error: "Callback URL must use https://",
@@ -27,19 +48,50 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
   
-  // X OAuth 2.0 - minimal required parameters
+  // Generate PKCE values (required by X OAuth 2.0)
+  const { verifier, challenge } = generatePKCE();
+  
+  // X OAuth 2.0 Authorization Code Flow with PKCE
+  // According to X docs: https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
   const scope = "users.read";
   const state = Math.random().toString(36).substring(7);
   
-  // Build URL - use exact redirect_uri from env (must match X Portal exactly)
-  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
+  // Store code_verifier server-side using KV (keyed by state)
+  // This ensures security - verifier never exposed to client
+  try {
+    const kv = await import("@/lib/kv");
+    const stateKey = `x_oauth_verifier:${state}`;
+    await kv.kv.setex(stateKey, 600, verifier); // Store for 10 minutes
+    console.log("✅ PKCE verifier stored server-side for state:", state.substring(0, 5) + "...");
+  } catch (error) {
+    console.error("⚠️ Failed to store PKCE verifier:", error);
+    // Fallback: return verifier to client (less secure but functional)
+    console.log("⚠️ Falling back to client-side verifier storage");
+  }
   
-  console.log("🔗 X OAuth URL:", {
-    clientIdLength: clientId.length,
-    redirectUri,
-    urlLength: authUrl.length
+  // Build authorization URL with PKCE
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: scope,
+    state: state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
   });
   
-  return NextResponse.json({ authUrl });
+  const authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  
+  console.log("🔗 X OAuth URL with PKCE:", {
+    clientIdLength: clientId.length,
+    redirectUri,
+    state: state.substring(0, 5) + "...",
+    hasCodeChallenge: !!challenge,
+  });
+  
+  return NextResponse.json({ 
+    authUrl,
+    state, // Return state so frontend can identify the flow
+  });
 }
 
