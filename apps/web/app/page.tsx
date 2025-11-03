@@ -34,11 +34,10 @@ function HomePageContent() {
         profile_image_url: profileImageUrl || "",
         bio: bio || undefined,
       });
-      if (wallet) {
-        setStep("generate");
-      }
+      // X connected - move to generate step (wallet not needed yet)
+      setStep("generate");
     }
-  }, [searchParams, wallet]);
+  }, [searchParams]);
 
   // Check for existing X session and wallet connection on mount
   useEffect(() => {
@@ -51,9 +50,8 @@ function HomePageContent() {
         if (sessionData.authenticated && sessionData.user) {
           setXUser(sessionData.user);
           console.log("✅ Restored X session:", sessionData.user.username);
-          if (wallet) {
-            setStep("generate");
-          }
+          // X connected - move to generate step (wallet not needed yet)
+          setStep("generate");
         }
       } catch (error) {
         console.log("No X session found");
@@ -63,16 +61,13 @@ function HomePageContent() {
     const checkWalletConnection = async () => {
       if (typeof window.ethereum !== "undefined") {
         try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const accounts = await provider.listAccounts();
-          if (accounts.length > 0) {
-            const address = await accounts[0].getAddress();
-            setWallet(address);
-            // If X user is already connected, move to generate step
-            if (xUser) {
-              setStep("generate");
-            }
-          }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await provider.listAccounts();
+        if (accounts.length > 0) {
+          const address = await accounts[0].getAddress();
+          setWallet(address);
+          // Wallet connected - step will be set by X connection logic
+        }
         } catch (error) {
           // Wallet not connected, that's fine
           console.log("No wallet connected");
@@ -203,11 +198,6 @@ function HomePageContent() {
         
         setWallet(address);
         
-        // If X user is already connected, move to generate step
-        if (xUser) {
-          setStep("generate");
-        }
-        
         // Clear any previous errors
         setError(null);
       } else {
@@ -293,6 +283,7 @@ function HomePageContent() {
       
       const data: GenerateResponse = await response.json();
       setGenerated(data);
+      // Image generated - now move to wallet connection (pay step)
       setStep("pay");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
@@ -437,76 +428,36 @@ function HomePageContent() {
           
           {step === "connect" && (
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-8 text-center">
-              <h2 className="text-2xl font-bold mb-4">Step 1: Connect</h2>
-              <p className="mb-6 text-gray-300">Connect your X account and wallet to get started</p>
+              <h2 className="text-2xl font-bold mb-4">Step 1: Connect X</h2>
+              <p className="mb-6 text-gray-300">Connect your X account to generate your unique AI creature</p>
               
-              {/* Status indicators */}
-              <div className="mb-6 space-y-2">
-                {xUser && (
-                  <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-sm">
-                    ✅ X Account: @{xUser.username}
-                  </div>
-                )}
-                {wallet && (
-                  <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-sm">
-                    ✅ Wallet: {wallet.substring(0, 6)}...{wallet.substring(wallet.length - 4)}
-                  </div>
-                )}
-              </div>
+              {/* Status indicator */}
+              {xUser && (
+                <div className="mb-6 bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-sm">
+                  ✅ X Account: @{xUser.username}
+                </div>
+              )}
               
               <div className="space-y-4">
-                <div className="flex gap-2">
-                  <button
-                    onClick={connectX}
-                    disabled={loading || !!xUser}
-                    className={`${
-                      xUser 
-                        ? "bg-gray-600 cursor-not-allowed" 
-                        : "bg-blue-500 hover:bg-blue-600"
-                    } text-white font-bold py-3 px-6 rounded-lg flex-1`}
-                  >
-                    {xUser ? "✅ X Account Connected" : "Connect X Account"}
-                  </button>
-                  <button
-                    onClick={checkXOAuthConfig}
-                    disabled={loading}
-                    className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg"
-                    title="Check X OAuth Configuration"
-                  >
-                    🔍
-                  </button>
-                </div>
                 <button
-                  onClick={connectWallet}
-                  disabled={loading || !!wallet}
+                  onClick={connectX}
+                  disabled={loading || !!xUser}
                   className={`${
-                    wallet 
+                    xUser 
                       ? "bg-gray-600 cursor-not-allowed" 
-                      : "bg-purple-500 hover:bg-purple-600"
+                      : "bg-blue-500 hover:bg-blue-600"
                   } text-white font-bold py-3 px-6 rounded-lg w-full`}
                 >
-                  {wallet ? "✅ Wallet Connected" : loading ? "Connecting..." : "Connect Wallet"}
+                  {xUser ? "✅ X Account Connected" : "Connect X Account"}
                 </button>
-                
-                {/* Show generate button when both are connected, or allow test mode */}
-                {(xUser && wallet) && (
-                  <button
-                    onClick={() => setStep("generate")}
-                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg w-full mt-4"
-                  >
-                    Continue to Generate →
-                  </button>
-                )}
-                
-                {/* Test mode button - no wallet/X required */}
-                {!xUser && (
-                  <button
-                    onClick={() => setStep("generate")}
-                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg w-full mt-4"
-                  >
-                    Test Mode (Skip Connections) →
-                  </button>
-                )}
+                <button
+                  onClick={checkXOAuthConfig}
+                  disabled={loading}
+                  className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg w-full"
+                  title="Check X OAuth Configuration"
+                >
+                  🔍 Check Config
+                </button>
               </div>
             </div>
           )}
@@ -584,7 +535,28 @@ function HomePageContent() {
           
           {step === "pay" && generated && (
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-8">
-              <h2 className="text-2xl font-bold mb-4 text-center">Step 3: Mint</h2>
+              <h2 className="text-2xl font-bold mb-4 text-center">Step 3: Connect Wallet & Mint</h2>
+              
+              {/* Show wallet connection button if not connected */}
+              {!wallet && (
+                <div className="mb-6 p-4 bg-purple-500/20 border border-purple-500/50 rounded-lg">
+                  <p className="text-sm mb-3">Connect your wallet to mint your NFT</p>
+                  <button
+                    onClick={connectWallet}
+                    disabled={loading}
+                    className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg w-full"
+                  >
+                    {loading ? "Connecting..." : "Connect Wallet"}
+                  </button>
+                </div>
+              )}
+              
+              {wallet && (
+                <div className="mb-6 bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-sm">
+                  ✅ Wallet Connected: {wallet.substring(0, 6)}...{wallet.substring(wallet.length - 4)}
+                </div>
+              )}
+              
               <div className="mb-6">
                 {/* Show preview image if available */}
                 {generated.preview && (
