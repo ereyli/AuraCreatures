@@ -6,7 +6,12 @@ export async function checkRateLimit(
   windowMs: number = 60000
 ): Promise<boolean> {
   const key = `rate_limit:${identifier}`;
-  return rateLimit(key, limit, windowMs);
+  try {
+    return await rateLimit(key, limit, windowMs);
+  } catch (error) {
+    console.warn("Rate limit check failed, allowing request (fail-open):", error);
+    return true; // Fail-open: If rate limiting fails, allow the request
+  }
 }
 
 export async function checkGenerateRateLimit(xUserId: string): Promise<boolean> {

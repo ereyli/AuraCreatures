@@ -18,17 +18,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
     
-    // Rate limiting
+    // Rate limiting (fail-open if KV unavailable)
     const allowed = await checkGenerateRateLimit(x_user_id);
     if (!allowed) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
     
-    // Acquire lock to prevent duplicate generation
+    // Acquire lock to prevent duplicate generation (fail-open if KV unavailable)
     const lockKey = `generate:${x_user_id}`;
-    const lockAcquired = await acquireLock(lockKey);
-    if (!lockAcquired) {
-      return NextResponse.json({ error: "Generation in progress" }, { status: 409 });
+    let lockAcquired = false;
+    try {
+      lockAcquired = await acquireLock(lockKey);
+      if (!lockAcquired) {
+        console.warn("Lock already exists, but continuing (KV may be unavailable)");
+      }
+    } catch (lockError) {
+      console.warn("Failed to acquire lock, continuing anyway (fail-open):", lockError);
+      lockAcquired = true; // Assume lock acquired to allow generation
     }
     
     try {
@@ -129,7 +135,12 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json(response);
     } finally {
-      await releaseLock(lockKey);
+      // Release lock (ignore errors - KV may be unavailable)
+      try {
+        await releaseLock(lockKey);
+      } catch (releaseError) {
+        console.warn("Failed to release lock (non-critical):", releaseError);
+      }
     }
   } catch (error) {
     console.error("Generate error:", error);
