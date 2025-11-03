@@ -59,31 +59,23 @@ export async function verifyX402PaymentHeader(
     const paymentData = JSON.parse(paymentHeader);
     const facilitator = getFacilitator();
     
-    // If using CDP facilitator (mainnet), use its verify method
-    if (isUsingCDPFacilitator()) {
-      try {
-        // CDP facilitator handles verification internally
-        // The payment header should contain the verified payment data
-        if (paymentData.payer && paymentData.amount && paymentData.asset) {
-          return {
-            payer: paymentData.payer,
-            amount: paymentData.amount,
-            asset: paymentData.asset,
-            network: paymentData.network || "base",
-            recipient: paymentData.recipient,
-          };
-        }
-      } catch (error) {
-        console.error("CDP facilitator verification error:", error);
-        return null;
-      }
-    }
-    
-    // For testnet facilitator, verify via HTTP
+    // Verify via facilitator (CDP for mainnet, testnet facilitator for testnet)
     if (facilitator.url) {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      // Add HTTP Basic Auth for CDP facilitator
+      if (facilitator.auth) {
+        const authString = Buffer.from(
+          `${facilitator.auth.username}:${facilitator.auth.password}`
+        ).toString("base64");
+        headers["Authorization"] = `Basic ${authString}`;
+      }
+      
       const response = await fetch(`${facilitator.url}/verify`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ payment: paymentData }),
       });
       
