@@ -9,15 +9,26 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
   
-  // Debug logging
+  // Debug logging with detailed URL comparison
+  const actualUrl = new URL(request.url);
+  const expectedCallbackUrl = env.X_CALLBACK_URL ? new URL(env.X_CALLBACK_URL) : null;
+  
   console.log("🔍 X OAuth Callback Debug:", {
-    url: request.url,
+    actualUrl: request.url,
+    actualHostname: actualUrl.hostname,
+    actualPathname: actualUrl.pathname,
+    expectedHostname: expectedCallbackUrl?.hostname,
+    expectedPathname: expectedCallbackUrl?.pathname,
+    urlMatch: expectedCallbackUrl 
+      ? (actualUrl.hostname === expectedCallbackUrl.hostname && actualUrl.pathname === expectedCallbackUrl.pathname)
+      : "N/A",
     hasCode: !!code,
     hasState: !!state,
     hasError: !!error,
     error,
     errorDescription,
     allParams: Object.fromEntries(searchParams.entries()),
+    queryString: actualUrl.search,
   });
   
   // Check if X OAuth is configured

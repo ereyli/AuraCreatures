@@ -30,14 +30,45 @@ export async function GET(request: NextRequest) {
   
   // X OAuth 2.0 scopes for API v2
   // users.read: Read user profile information (required for /users/me endpoint)
-  // offline.access is optional, start with just users.read to avoid 400 errors
   const scope = "users.read";
   const state = Math.random().toString(36).substring(7);
   
+  // Validate and normalize redirect URI
+  let normalizedRedirectUri = redirectUri;
+  
+  // Remove trailing slash if present
+  if (normalizedRedirectUri.endsWith("/") && normalizedRedirectUri !== "https://" && normalizedRedirectUri !== "http://") {
+    normalizedRedirectUri = normalizedRedirectUri.slice(0, -1);
+  }
+  
+  // Ensure https:// protocol
+  if (!normalizedRedirectUri.startsWith("https://")) {
+    console.warn("⚠️ Redirect URI should use https:// protocol");
+  }
+  
   // X OAuth 2.0 authorization URL format
-  // Correct endpoint: https://twitter.com/i/oauth2/authorize
-  // Parameters must be properly encoded
-  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
+  // Correct endpoint: https://twitter.com/i/oauth2/authorize (NOT /api/2/oauth2/authorize)
+  // ALL parameters must be properly URL-encoded
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: normalizedRedirectUri,
+    scope: scope,
+    state: state,
+  });
+  
+  const authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  
+  // Verify URL encoding
+  console.log("🔍 Authorization URL Components:", {
+    endpoint: "https://twitter.com/i/oauth2/authorize",
+    clientId: clientId.substring(0, 15) + "...",
+    redirectUri: normalizedRedirectUri,
+    redirectUriEncoded: encodeURIComponent(normalizedRedirectUri),
+    scope,
+    state,
+    fullUrl: authUrl.substring(0, 150) + "...",
+  });
   
   // Log for debugging (always log in production too for troubleshooting)
   console.log("🔍 X OAuth Authorization URL Generated:", {
